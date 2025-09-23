@@ -15,7 +15,7 @@ class Config:
     
     # Telegram
     TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-    TELEGRAM_ADMIN_CHAT_ID = int(os.getenv('1383508355', '0'))
+    TELEGRAM_ADMIN_CHAT_ID = int(os.getenv('TELEGRAM_ADMIN_CHAT_ID', '1383508355'))
     
     # VK API - используем данные из старого config.json + новые чаты
     VK_CHATS = [

@@ -108,6 +108,19 @@ class Database:
         """):
             pass
 
+        async with self.connection.execute("""
+            CREATE TABLE IF NOT EXISTS telegram_users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER UNIQUE NOT NULL,
+                username TEXT,
+                first_name TEXT,
+                last_name TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """):
+            pass
+
         await self.connection.commit()
 
     async def _create_indexes(self):
@@ -349,6 +362,35 @@ class Database:
         except Exception as e:
             logger.error(f"Failed to get today stats for chat {chat_id}: {e}")
             return {'messages': 0, 'authors': 0}
+
+    async def save_telegram_user(self, user_id: int, username: str = None, first_name: str = None, last_name: str = None):
+        """Сохраняет пользователя Telegram"""
+        try:
+            async with self.connection.execute("""
+                INSERT OR REPLACE INTO telegram_users (user_id, username, first_name, last_name, last_activity)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """, (user_id, username, first_name, last_name)):
+                pass
+        except Exception as e:
+            logger.error(f"Failed to save telegram user {user_id}: {e}")
+
+    async def get_all_telegram_users(self) -> List[Dict[str, Any]]:
+        """Получает всех пользователей Telegram"""
+        try:
+            async with self.connection.execute("SELECT user_id, username, first_name, last_name FROM telegram_users") as cursor:
+                rows = await cursor.fetchall()
+                return [
+                    {
+                        'user_id': row[0],
+                        'username': row[1],
+                        'first_name': row[2],
+                        'last_name': row[3]
+                    }
+                    for row in rows
+                ]
+        except Exception as e:
+            logger.error(f"Failed to get telegram users: {e}")
+            return []
 
 # Глобальный экземпляр базы данных
 db = Database()

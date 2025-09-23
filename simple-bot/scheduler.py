@@ -37,7 +37,7 @@ class Scheduler:
         while self.running:
             try:
                 now = datetime.now()
-                target_time = time(17, 9)  # 17:05 МСК
+                target_time = time(00, 14)  
                 
                 # Вычисляем время до следующего запуска
                 next_run = datetime.combine(now.date(), target_time)
@@ -89,40 +89,95 @@ class Scheduler:
             await asyncio.sleep(60)  # Проверяем каждую минуту
     
     async def _send_daily_report(self, results):
-        """Отправляет ежедневный отчет с CSV"""
+        """Отправляет ежедневный отчет с CSV всем пользователям"""
         try:
-            # Получаем статистику из базы данных
-            stats = await db.get_stats()
-            
-            # Создаем CSV с общей статистикой
-            csv_content = await self._create_stats_csv(stats)
+            # Создаем CSV с актуальными результатами анализа
+            csv_content = await self._create_daily_report_csv(results)
             
             # Создаем файл
             filename = f"daily_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
             
-            # Отправляем CSV файл
-            await self.telegram_bot.bot.send_document(
-                chat_id=config.TELEGRAM_ADMIN_ID,
-                document=types.BufferedInputFile(
-                    csv_content.encode('utf-8'),
-                    filename=filename
-                ),
-                caption=f"📊 **Ежедневный отчет VK чатов**\n\n"
-                       f"📅 Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n"
-                       f"📁 Файл: {filename}\n\n"
-                       f"✅ Анализ завершен автоматически!"
-            )
+            # Получаем всех пользователей Telegram
+            users = await db.get_all_telegram_users()
             
-            logger.info("Daily report sent successfully")
+            # Отправляем отчет всем пользователям
+            for user in users:
+                try:
+                    await self.telegram_bot.bot.send_document(
+                        chat_id=user['user_id'],
+                        document=types.BufferedInputFile(
+                            csv_content.encode('utf-8-sig'),
+                            filename=filename
+                        ),
+                        caption=f"📊 **Ежедневный отчет VK чатов**\n\n"
+                               f"📅 Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n"
+                               f"📁 Файл: {filename}\n\n"
+                               f"✅ Анализ завершен автоматически!"
+                    )
+                    logger.info(f"Daily report sent to user {user['user_id']}")
+                except Exception as e:
+                    logger.error(f"Failed to send report to user {user['user_id']}: {e}")
+            
+            logger.info(f"Daily report sent to {len(users)} users")
             
         except Exception as e:
             logger.error(f"Failed to send daily report: {e}")
+    
+    async def _create_daily_report_csv(self, results):
+        """Создает CSV с актуальными результатами анализа"""
+        import csv
+        import io
+        
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Заголовок
+        writer.writerow(["VK Chat Statistics Export"])
+        writer.writerow([])
+        
+        # Общая статистика
+        total_members = sum(len(r.get('filtered_members', [])) for r in results)
+        total_messages = sum(len(r.get('filtered_messages', [])) for r in results)
+        
+        writer.writerow(["1. Общая статистика по всем чатам:"])
+        writer.writerow([f"Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}"])
+        writer.writerow([f"Обработано чатов: {len(results)}"])
+        writer.writerow([f"Общая статистика:"])
+        writer.writerow([f"Участников: {total_members}"])
+        writer.writerow([f"Сообщений (за месяц): {total_messages}"])
+        writer.writerow([])
+        
+        # Статистика по чатам
+        writer.writerow(["2. Статистика по каждому чату:"])
+        for result in results:
+            group_id = result.get('group_id', 'Unknown')
+            members_count = len(result.get('filtered_members', []))
+            messages_count = len(result.get('filtered_messages', []))
+            writer.writerow([f"id группы чата: {group_id}"])
+            writer.writerow([f"{members_count} участников, {messages_count} сообщений"])
+        
+        writer.writerow([])
+        
+        # Информация о CSV файле
+        writer.writerow(["3. Информация о CSV файле:"])
+        writer.writerow([f"Файл: data/vk_chats.csv"])
+        writer.writerow([f"Загружено чатов: {len(results)}"])
+        
+        # Список чатов из CSV
+        writer.writerow([])
+        writer.writerow(["4. Список чатов из CSV:"])
+        vk_chats = config.get_vk_chats()
+        for i, chat in enumerate(vk_chats, 1):
+            writer.writerow([f"Чат {i}: ID: {chat['group_id']} Название: {chat['chat_name']} Активен: {'Да' if chat['is_active'] else 'Нет'}"])
+        
+        csv_content = output.getvalue()
+        return '\ufeff' + csv_content  # Добавляем BOM для Windows Excel
     
     async def _send_error_notification(self, error_message: str):
         """Отправляет уведомление об ошибке"""
         try:
             await self.telegram_bot.bot.send_message(
-                chat_id=config.TELEGRAM_ADMIN_ID,
+                chat_id=config.TELEGRAM_ADMIN_CHAT_ID,
                 text=f"❌ **Ошибка ежедневного анализа**\n\n{error_message}"
             )
         except Exception as e:

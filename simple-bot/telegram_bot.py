@@ -40,6 +40,14 @@ class TelegramBot:
     
     async def start_command(self, message: types.Message):
         """Обработчик команды /start"""
+        # Сохраняем пользователя
+        await db.save_telegram_user(
+            user_id=message.from_user.id,
+            username=message.from_user.username,
+            first_name=message.from_user.first_name,
+            last_name=message.from_user.last_name
+        )
+        
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📊 Загрузить CSV", callback_data="upload_csv")],
             [InlineKeyboardButton(text="🚀 Запустить анализ", callback_data="analyze")],
