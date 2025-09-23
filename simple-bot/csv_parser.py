@@ -32,15 +32,19 @@ class CSVParser:
                 
                 for row_num, row in enumerate(reader, start=2):  # Начинаем с 2 (пропускаем заголовок)
                     try:
+                        # Обрабатываем BOM в названиях полей
+                        group_id = row.get('group_id') or row.get('\ufeffgroup_id')
+                        token = row.get('token')
+                        
                         # Валидация обязательных полей
-                        if not row.get('group_id') or not row.get('token'):
+                        if not group_id or not token:
                             logger.warning(f"Row {row_num}: Missing group_id or token, skipping")
                             continue
                         
                         # Создаем объект чата в том же формате что и config.py
                         chat = {
-                            "group_id": str(row['group_id']).strip(),
-                            "token": str(row['token']).strip(),
+                            "group_id": str(group_id).strip(),
+                            "token": str(token).strip(),
                             "chat_name": str(row.get('chat_name', f"Chat {len(chats) + 1}")).strip(),
                             "is_active": str(row.get('is_active', '1')).strip() == '1'
                         }

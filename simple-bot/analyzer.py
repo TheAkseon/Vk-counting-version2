@@ -257,7 +257,7 @@ class ChatAnalyzer:
                 
                 # Собираем статистику
                 unique_members = len(set(result['filtered_members']))
-                unique_messages = len(set(msg.get("from_id", "") for msg in result['filtered_messages']))
+                unique_messages = len(result['filtered_messages'])
                 
                 all_stats.append((
                     chat_id,
