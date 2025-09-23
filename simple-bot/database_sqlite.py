@@ -289,7 +289,8 @@ class Database:
                     c.title,
                     c.members_count,
                     COUNT(DISTINCT cm.vk_id) as unique_members,
-                    COUNT(DISTINCT m.message_id) as unique_messages
+                    COUNT(DISTINCT m.message_id) as unique_messages,
+                    COUNT(DISTINCT m.user_id) as unique_authors
                 FROM chats c
                 LEFT JOIN chat_members cm ON c.id = cm.chat_id AND cm.is_active = 1
                 LEFT JOIN messages m ON c.id = m.chat_id
@@ -303,7 +304,8 @@ class Database:
                         'title': row[1],
                         'members_count': row[2],
                         'unique_members': row[3] or 0,
-                        'unique_messages': row[4] or 0
+                        'unique_messages': row[4] or 0,
+                        'unique_authors': row[5] or 0
                     }
                     for row in rows
                 ]
