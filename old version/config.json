@@ -1,0 +1,29 @@
+{
+  "vk_chats": [
+    {
+      "group_id": "230351857",
+      "token": "vk1.a.BF2mzPzhp-1ScgnxeS0BpUhJkuUTXV-ym3lteHFO2BEV6IKy_RmgB7-vVnJWu85UvZXlOljUfkdrrlH-C8bHotjLQ92Gzuhj87rUM_GBw1zZ7In2RlBbt8KQ5Jr-lLOd4yYpDTzBWGZBpEUcHUGkz-T1DJCM3e6ruyTAjaujSnTd8e-d5CjI_R5FlfFiFN7yiFSTvxQrrgeIo0dvzoxqaQ"
+    },
+    {
+      "group_id": "229684282",
+      "token": "vk1.a.jM8DPStCtvU3Hpm0hJUybPrAZK2ueuEt1GpR4QcAl2B5JjVxPZTUs5dgH6_bBj4yAc7q0HklKgf93LGCdXfLRQ_ZqjhPqRCCv1JmxBgxXF6bhTKxKGIQdq_Eqzbe5SXySgW9aPx38D-qU2xjwhDxPjUuIHKH0D9BZQB4VnFqVuhnm3YA4m_oufG1EUf-IAwQD73a-2tuun2-cfVYTPke1Q"
+    },
+    {
+      "group_id": "230482562",
+      "token": "vk1.a.ipopqLr7oMJgUxShdy07MS0uMArlkf7boNGGqFIX9r1bTCy4fKKEGZm2RRahyhwBSb4u4WSdfzsk0SlLgGbNY313XNOeeFdQAAUwpzjotAWdgOtGAAFva67lVhxuV1msojzr0vwsVMVKlmsDiZ88wWMKhdsz-uphqM9-esxJL6sSqTsMmQVK0sJidujt1Kq5jz04DnlP0sf12ESz5NiGng"
+    },
+    {
+      "group_id": "230482521",
+      "token": "vk1.a.Hu6ng24HJBCidlhDjDx5vnxQJObmzo4oApiSsEehiUxShBfu-Q794HQBPWMqApHardJQh-v5z4vysOI5D-4ezkeEP1Wm5A2c5YpXf5pjKLsV-8Udaj3IjKPsmH2gzj2ejWeIlNzYtuSkjPFwQQGNLtZGkX8VK-WoN0MkXp7ATCnlr87cmSPVeGYtq2ar2NZLCp767oeZ1orMi_BcCKUTCQ"
+    },
+    {
+      "group_id": "229684332",
+      "token": "vk1.a.-s7vIRR0TXGiUMRrwqQ1iPYeaW9Uh1SuVdMZMxRsIyDusVIz935uABAxnyknKWdcOJUGH5DdBb12IDJz_1hpGLu70rNGjLHnxj6daEZAEjhi_onKfB4CnuA5Cv_csj7YFwXLLLU44IEdt3mdzKOtcPxijIJG_R4X-aPH-tYRhsEuixYzWdfeVxd8Ol4R7zcrmQusLfw5TBt2W2dovdD6Iw"
+    }
+  ],
+  "api_version": "5.131",
+  "settings": {
+    "timeout": 30,
+    "retry_attempts": 3
+  }
+}

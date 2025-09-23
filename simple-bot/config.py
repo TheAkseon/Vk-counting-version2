@@ -1,0 +1,72 @@
+"""
+Простая конфигурация для VK бота (как в старом боте)
+"""
+import json
+import os
+from dotenv import load_dotenv
+
+# Загружаем переменные окружения
+load_dotenv('.env')
+
+class Config:
+    """Простая конфигурация как в старом боте"""
+    
+    # Telegram
+    TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+    TELEGRAM_ADMIN_CHAT_ID = int(os.getenv('TELEGRAM_ADMIN_CHAT_ID', '0'))
+    
+    # VK API - используем данные из старого config.json + новые чаты
+    VK_CHATS = [
+        {
+            "group_id": "230351857",
+            "token": "vk1.a.BF2mzPzhp-1ScgnxeS0BpUhJkuUTXV-ym3lteHFO2BEV6IKy_RmgB7-vVnJWu85UvZXlOljUfkdrrlH-C8bHotjLQ92Gzuhj87rUM_GBw1zZ7In2RlBbt8KQ5Jr-lLOd4yYpDTzBWGZBpEUcHUGkz-T1DJCM3e6ruyTAjaujSnTd8e-d5CjI_R5FlfFiFN7yiFSTvxQrrgeIo0dvzoxqaQ"
+        },
+        {
+            "group_id": "229684282", 
+            "token": "vk1.a.jM8DPStCtvU3Hpm0hJUybPrAZK2ueuEt1GpR4QcAl2B5JjVxPZTUs5dgH6_bBj4yAc7q0HklKgf93LGCdXfLRQ_ZqjhPqRCCv1JmxBgxXF6bhTKxKGIQdq_Eqzbe5SXySgW9aPx38D-qU2xjwhDxPjUuIHKH0D9BZQB4VnFqVuhnm3YA4m_oufG1EUf-IAwQD73a-2tuun2-cfVYTPke1Q"
+        },
+        {
+            "group_id": "230482562",
+            "token": "vk1.a.ipopqLr7oMJgUxShdy07MS0uMArlkf7boNGGqFIX9r1bTCy4fKKEGZm2RRahyhwBSb4u4WSdfzsk0SlLgGbNY313XNOeeFdQAAUwpzjotAWdgOtGAAFva67lVhxuV1msojzr0vwsVMVKlmsDiZ88wWMKhdsz-uphqM9-esxJL6sSqTsMmQVK0sJidujt1Kq5jz04DnlP0sf12ESz5NiGng"
+        },
+        {
+            "group_id": "230482521",
+            "token": "vk1.a.Hu6ng24HJBCidlhDjDx5vnxQJObmzo4oApiSsEehiUxShBfu-Q794HQBPWMqApHardJQh-v5z4vysOI5D-4ezkeEP1Wm5A2c5YpXf5pjKLsV-8Udaj3IjKPsmH2gzj2ejWeIlNzYtuSkjPFwQQGNLtZGkX8VK-WoN0MkXp7ATCnlr87cmSPVeGYtq2ar2NZLCp767oeZ1orMi_BcCKUTCQ"
+        },
+        {
+            "group_id": "229684332",
+            "token": "vk1.a.-s7vIRR0TXGiUMRrwqQ1iPYeaW9Uh1SuVdMZMxRsIyDusVIz935uABAxnyknKWdcOJUGH5DdBb12IDJz_1hpGLu70rNGjLHnxj6daEZAEjhi_onKfB4CnuA5Cv_csj7YFwXLLLU44IEdt3mdzKOtcPxijIJG_R4X-aPH-tYRhsEuixYzWdfeVxd8Ol4R7zcrmQusLfw5TBt2W2dovdD6Iw"
+        },
+        {
+            "group_id": "229684199",
+            "token": "vk1.a.YQDvOrsopCSanomfEuFptmKFZ2xdY76I7nCFuk4MsDLgrYBhReQMvAHmlIDI5Cl1P9CcRVmPakzyzOgCWrw9_6D-Db9mr6eGYhAHeG4krRNPMrak3XNeA-WbDhGiGGRbLh6DQN5O8HbC5hoQfyrp7qde4s8pzjEY_Y0t49H4_kmn9Laszzo0-PfEbKprDDahwgo7FoR0MfsjATWMYYyPHw"
+        },
+        {
+            "group_id": "230436953",
+            "token": "vk1.a.4GBj0sXG4u533Ipg_voo04_ukCQpkPB9hNfIpyZ6wSOcJVruvaOc6L39kcWICWvtWbowCN48ceoOI631ZFiB88s3xw5NJgiObQBUkqJBa6cRQDwDVerMQwvS1KRSoAXTr8JmYWrpPyCmtV7IlTMTPUN1GC2VhqZ3czDwDIUqeZMXTRrfbwv_lvx5J2ApEdhjxJTr07E1pPyUTyt_j_yfYg"
+        },
+        {
+            "group_id": "229509093",
+            "token": "vk1.a.C0srqfwZaawa6PFkZtZqIFPdrYmlkGdx-wv_pAO83-jbK4aFrEWQq1w7UF616mWH2pag9gFh7bsHKvhSw3KzzlSmV9Xw0fMd8-7tTLBkTvYIQ0-l8YLRs88-fJrm8kGnbztzieeL9OwrCHvtmco-i1AhH0H40jnymKANqU0eAoyCqdc7zt7zshtttvrtxOJLn5CQf8gaI0q3jStwjiKoMw"
+        }
+    ]
+    
+    VK_API_VERSION = "5.131"
+    PEER_ID = 2000000001
+    MAX_MESSAGES = 10000
+    RATE_LIMIT_DELAY = 0.34
+    
+    # Database
+    POSTGRES_HOST = os.getenv('POSTGRES_HOST', 'localhost')
+    POSTGRES_PORT = int(os.getenv('POSTGRES_PORT', '5432'))
+    POSTGRES_DB = os.getenv('POSTGRES_DB', 'vk_simple_bot')
+    POSTGRES_USER = os.getenv('POSTGRES_USER', 'vk_user')
+    POSTGRES_PASSWORD = os.getenv('POSTGRES_PASSWORD', 'vk_password')
+    
+    @property
+    def database_url(self):
+        """URL для подключения к базе данных"""
+        return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+
+# Глобальный экземпляр конфигурации
+config = Config()
