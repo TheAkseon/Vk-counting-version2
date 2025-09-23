@@ -279,6 +279,37 @@ class Database:
                 'today_unique_messages': 0,
                 'today_unique_authors': 0
             }
+    
+    async def get_chats_stats(self) -> List[Dict[str, Any]]:
+        """Получает статистику по каждому чату"""
+        try:
+            async with self.connection.execute("""
+                SELECT 
+                    c.group_id,
+                    c.title,
+                    c.members_count,
+                    COUNT(DISTINCT cm.vk_id) as unique_members,
+                    COUNT(DISTINCT m.message_id) as unique_messages
+                FROM chats c
+                LEFT JOIN chat_members cm ON c.id = cm.chat_id AND cm.is_active = 1
+                LEFT JOIN messages m ON c.id = m.chat_id
+                GROUP BY c.id, c.group_id, c.title, c.members_count
+                ORDER BY c.id
+            """) as cursor:
+                rows = await cursor.fetchall()
+                return [
+                    {
+                        'group_id': row[0],
+                        'title': row[1],
+                        'members_count': row[2],
+                        'unique_members': row[3] or 0,
+                        'unique_messages': row[4] or 0
+                    }
+                    for row in rows
+                ]
+        except Exception as e:
+            logger.error(f"Failed to get chats stats: {e}")
+            return []
 
 # Глобальный экземпляр базы данных
 db = Database()

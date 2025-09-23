@@ -121,9 +121,14 @@ class TelegramBot:
                 )
             else:
                 # Суммируем статистику по всем чатам (используем отфильтрованные данные)
+                # Считаем уникальных участников (без дублирования между чатами)
+                all_unique_members = set()
+                for r in results:
+                    all_unique_members.update(r.get('filtered_members', []))
+                
                 total_members = sum(len(r.get('filtered_members', [])) for r in results)
                 total_messages = sum(len(r.get('filtered_messages', [])) for r in results)
-                total_unique_members = sum(len(r.get('filtered_members', [])) for r in results)
+                total_unique_members = len(all_unique_members)
                 total_unique_messages = sum(len(r.get('filtered_messages', [])) for r in results)
                 
                 report = (
@@ -131,10 +136,8 @@ class TelegramBot:
                     f"📅 Дата: {results[0]['analysis_date']}\n"
                     f"📊 Обработано чатов: {len(results)}\n\n"
                     f"**Общая статистика:**\n"
-                    f"👥 Участников: {total_members}\n"
                     f"💬 Сообщений (за месяц): {total_messages}\n"
                     f"🔢 Уникальных участников: {total_unique_members}\n"
-                    f"🔢 Уникальных сообщений: {total_unique_messages}\n\n"
                     f"**По чатам:**\n"
                 )
                 
@@ -163,23 +166,83 @@ class TelegramBot:
             )
     
     async def handle_export_callback(self, callback: types.CallbackQuery):
-        """Обработчик экспорта данных - показывает меню"""
-        await callback.answer("📥 Выберите тип экспорта...")
+        """Обработчик экспорта данных - создает CSV с общей статистикой"""
+        await callback.answer("📥 Создаю CSV файл...")
         
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="📊 Все данные (сводный отчет)", callback_data="export_all")],
-            [InlineKeyboardButton(text="💬 Чаты", callback_data="export_chats")],
-            [InlineKeyboardButton(text="👥 Пользователи", callback_data="export_users")],
-            [InlineKeyboardButton(text="💬 Сообщения", callback_data="export_messages")],
-            [InlineKeyboardButton(text="📈 Статистика", callback_data="export_stats")],
-            [InlineKeyboardButton(text="⬅️ Назад", callback_data="stats")]
-        ])
+        try:
+            # Получаем статистику из базы данных
+            stats = await db.get_stats()
+            
+            if not stats.get('has_data', False):
+                await callback.message.edit_text(
+                    "⚠️ **Нет данных для экспорта!**\n\n"
+                    "Сначала запустите анализ чатов.",
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text="🚀 Запустить анализ", callback_data="analyze")]
+                    ])
+                )
+                return
+            
+            # Создаем CSV с общей статистикой
+            csv_content = await self._create_stats_csv(stats)
+            
+            # Создаем файл
+            filename = f"vk_stats_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            
+            await callback.message.answer_document(
+                types.BufferedInputFile(
+                    csv_content.encode('utf-8'),
+                    filename=filename
+                ),
+                caption=f"📊 **Экспорт статистики VK чатов**\n\n"
+                       f"📅 Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n"
+                       f"📁 Файл: {filename}"
+            )
+            
+        except Exception as e:
+            logger.error(f"Error creating export: {e}")
+            await callback.message.edit_text(
+                f"❌ Ошибка при создании экспорта: {str(e)}",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🚀 Запустить анализ", callback_data="analyze")]
+                ])
+            )
+    
+    async def _create_stats_csv(self, stats: Dict[str, Any]) -> str:
+        """Создает CSV с общей статистикой"""
+        import csv
+        import io
         
-        await callback.message.edit_text(
-            "📥 **Экспорт данных**\n\n"
-            "Выберите тип данных для экспорта:",
-            reply_markup=keyboard
-        )
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Заголовок
+        writer.writerow(["VK Chat Statistics Export"])
+        writer.writerow([])
+        
+        # Общая статистика
+        writer.writerow(["1. Общая статистика по всем чатам:"])
+        writer.writerow(["Дата:", datetime.now().strftime('%d.%m.%Y %H:%M')])
+        writer.writerow(["Обработано чатов:", stats['total_chats']])
+        writer.writerow([])
+        writer.writerow(["Общая статистика:"])
+        writer.writerow(["Участников:", stats['total_unique_members']])
+        writer.writerow(["Сообщений (за месяц):", stats['total_unique_messages']])
+        writer.writerow([])
+        
+        # Статистика по чатам
+        writer.writerow(["2. Статистика по каждому чату:"])
+        
+        # Получаем данные по чатам из базы данных
+        chats_stats = await db.get_chats_stats()
+        for chat in chats_stats:
+            writer.writerow([
+                f"id группы чата: {chat['group_id']}",
+                f"{chat['unique_members']} участников,",
+                f"{chat['unique_messages']} сообщений"
+            ])
+        
+        return output.getvalue()
     
     async def handle_export_all_callback(self, callback: types.CallbackQuery):
         """Экспорт всех данных"""

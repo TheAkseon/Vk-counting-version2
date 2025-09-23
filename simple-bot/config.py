@@ -13,17 +13,13 @@ class Config:
     
     # Telegram
     TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-    TELEGRAM_ADMIN_CHAT_ID = int(os.getenv('TELEGRAM_ADMIN_CHAT_ID', '0'))
+    TELEGRAM_ADMIN_CHAT_ID = int(os.getenv('1383508355', '0'))
     
     # VK API - используем данные из старого config.json + новые чаты
     VK_CHATS = [
         {
             "group_id": "230351857",
             "token": "vk1.a.BF2mzPzhp-1ScgnxeS0BpUhJkuUTXV-ym3lteHFO2BEV6IKy_RmgB7-vVnJWu85UvZXlOljUfkdrrlH-C8bHotjLQ92Gzuhj87rUM_GBw1zZ7In2RlBbt8KQ5Jr-lLOd4yYpDTzBWGZBpEUcHUGkz-T1DJCM3e6ruyTAjaujSnTd8e-d5CjI_R5FlfFiFN7yiFSTvxQrrgeIo0dvzoxqaQ"
-        },
-        {
-            "group_id": "229684282", 
-            "token": "vk1.a.jM8DPStCtvU3Hpm0hJUybPrAZK2ueuEt1GpR4QcAl2B5JjVxPZTUs5dgH6_bBj4yAc7q0HklKgf93LGCdXfLRQ_ZqjhPqRCCv1JmxBgxXF6bhTKxKGIQdq_Eqzbe5SXySgW9aPx38D-qU2xjwhDxPjUuIHKH0D9BZQB4VnFqVuhnm3YA4m_oufG1EUf-IAwQD73a-2tuun2-cfVYTPke1Q"
         },
         {
             "group_id": "230482562",
@@ -34,27 +30,15 @@ class Config:
             "token": "vk1.a.Hu6ng24HJBCidlhDjDx5vnxQJObmzo4oApiSsEehiUxShBfu-Q794HQBPWMqApHardJQh-v5z4vysOI5D-4ezkeEP1Wm5A2c5YpXf5pjKLsV-8Udaj3IjKPsmH2gzj2ejWeIlNzYtuSkjPFwQQGNLtZGkX8VK-WoN0MkXp7ATCnlr87cmSPVeGYtq2ar2NZLCp767oeZ1orMi_BcCKUTCQ"
         },
         {
-            "group_id": "229684332",
-            "token": "vk1.a.-s7vIRR0TXGiUMRrwqQ1iPYeaW9Uh1SuVdMZMxRsIyDusVIz935uABAxnyknKWdcOJUGH5DdBb12IDJz_1hpGLu70rNGjLHnxj6daEZAEjhi_onKfB4CnuA5Cv_csj7YFwXLLLU44IEdt3mdzKOtcPxijIJG_R4X-aPH-tYRhsEuixYzWdfeVxd8Ol4R7zcrmQusLfw5TBt2W2dovdD6Iw"
-        },
-        {
-            "group_id": "229684199",
-            "token": "vk1.a.YQDvOrsopCSanomfEuFptmKFZ2xdY76I7nCFuk4MsDLgrYBhReQMvAHmlIDI5Cl1P9CcRVmPakzyzOgCWrw9_6D-Db9mr6eGYhAHeG4krRNPMrak3XNeA-WbDhGiGGRbLh6DQN5O8HbC5hoQfyrp7qde4s8pzjEY_Y0t49H4_kmn9Laszzo0-PfEbKprDDahwgo7FoR0MfsjATWMYYyPHw"
-        },
-        {
-            "group_id": "230436953",
-            "token": "vk1.a.4GBj0sXG4u533Ipg_voo04_ukCQpkPB9hNfIpyZ6wSOcJVruvaOc6L39kcWICWvtWbowCN48ceoOI631ZFiB88s3xw5NJgiObQBUkqJBa6cRQDwDVerMQwvS1KRSoAXTr8JmYWrpPyCmtV7IlTMTPUN1GC2VhqZ3czDwDIUqeZMXTRrfbwv_lvx5J2ApEdhjxJTr07E1pPyUTyt_j_yfYg"
-        },
-        {
-            "group_id": "229509093",
-            "token": "vk1.a.C0srqfwZaawa6PFkZtZqIFPdrYmlkGdx-wv_pAO83-jbK4aFrEWQq1w7UF616mWH2pag9gFh7bsHKvhSw3KzzlSmV9Xw0fMd8-7tTLBkTvYIQ0-l8YLRs88-fJrm8kGnbztzieeL9OwrCHvtmco-i1AhH0H40jnymKANqU0eAoyCqdc7zt7zshtttvrtxOJLn5CQf8gaI0q3jStwjiKoMw"
+            "group_id": "230547891",
+            "token": "vk1.a.wDymbjGGGUuQbHnWqsRpf91Foj2suL3T2505dEhlCEe1ZM3avl0nnxXVdlYETZE6cfxGpd4GlyL_qCsmKL4WaRL4I8NT8jcsme_j_fI_EMqxbQS3CVXVaReB8l3Zcz04ISD1FJ6uRtdwjlSYtuobCqrNibvXZWYhoMplp7fu02wz6vGV5ODP2aiAwD0lEeaIcnfkjcQSFpy8jrwrfB3DkQ"
         }
     ]
     
     VK_API_VERSION = "5.131"
     PEER_ID = 2000000001
     MAX_MESSAGES = 10000
-    RATE_LIMIT_DELAY = 0.34
+    RATE_LIMIT_DELAY = 0.2  # Уменьшено для множественных токенов
     
     # Database
     POSTGRES_HOST = os.getenv('POSTGRES_HOST', 'localhost')

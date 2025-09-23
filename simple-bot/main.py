@@ -4,7 +4,7 @@
 import asyncio
 import signal
 from loguru import logger
-from config import config
+from config import Config
 from database_sqlite import db
 from telegram_bot import TelegramBot
 from scheduler import Scheduler
@@ -24,6 +24,9 @@ class VKSimpleBot:
             
             # Инициализируем базу данных
             await db.initialize()
+            
+            # Передаем Telegram бота в планировщик
+            self.scheduler.set_telegram_bot(self.telegram_bot)
             
             # Запускаем планировщик
             asyncio.create_task(self.scheduler.start())

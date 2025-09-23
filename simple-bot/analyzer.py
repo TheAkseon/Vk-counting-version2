@@ -23,12 +23,16 @@ class ChatAnalyzer:
         self.user_chats = {}  # user_id -> [chat_names]
         self.duplicated_users_set = set()
     
-    async def analyze_all_chats(self) -> List[Dict[str, Any]]:
+    async def analyze_all_chats(self, batch_size: int = 100) -> List[Dict[str, Any]]:
         """Анализ всех чатов с логикой старого бота"""
         logger.info(f"Starting parallel analysis of {len(config.VK_CHATS)} chats with old logic")
         
-        # Шаг 1: Анализируем чаты параллельно (по 5 одновременно)
-        semaphore = asyncio.Semaphore(5)  # Максимум 5 параллельных чатов
+        # Если чатов много, обрабатываем пакетами
+        if len(config.VK_CHATS) > batch_size:
+            return await self._analyze_chats_in_batches(batch_size)
+        
+        # Шаг 1: Анализируем чаты параллельно (по 20 одновременно)
+        semaphore = asyncio.Semaphore(20)  # Максимум 20 параллельных чатов
         
         async def analyze_chat_with_semaphore(chat_config, index):
             async with semaphore:
@@ -83,6 +87,7 @@ class ChatAnalyzer:
             # Получаем участников и общее количество параллельно
             members, total_messages = await asyncio.gather(members_task, total_task)
             
+            # Фильтруем только реальных пользователей (исключаем удаленные страницы)
             real_users = [user_id for user_id in members if user_id > 0]
             members_count = len(real_users)
             
@@ -95,6 +100,7 @@ class ChatAnalyzer:
                 msg for msg in messages 
                 if month_ago <= msg.get('date', 0) <= current_time
             ]
+            # Фильтруем сообщения только от реальных пользователей (исключаем удаленные страницы)
             real_month_messages = [
                 msg for msg in month_messages 
                 if msg.get('from_id', 0) > 0
@@ -136,7 +142,7 @@ class ChatAnalyzer:
         unique_users = []
         
         for user_id, chats in user_chats.items():
-            if len(chats) > 2:  # Дублированный если в более чем 2 чатах
+            if len(chats) > 1:  # Дублированный если в более чем 1 чате
                 duplicated_users.append(user_id)
             else:
                 unique_users.append(user_id)
@@ -156,20 +162,20 @@ class ChatAnalyzer:
         }
     
     def _filter_duplicated_data(self, duplicated_users: List[int]) -> List[Dict[str, Any]]:
-        """Фильтрует данные, исключая дублированных пользователей"""
+        """Фильтрует данные, оставляя только пользователей из одного чата"""
         filtered_results = []
         
         for result in self.all_results:
-            # Фильтруем участников
+            # Фильтруем участников (исключаем дублированных и удаленные страницы)
             filtered_members = [
                 user_id for user_id in result['all_members'] 
-                if user_id not in duplicated_users
+                if user_id not in duplicated_users and user_id > 0
             ]
             
-            # Фильтруем сообщения
+            # Фильтруем сообщения (исключаем от дублированных пользователей и удаленных страниц)
             filtered_messages = [
                 msg for msg in result['all_messages']
-                if msg.get('from_id', 0) not in duplicated_users
+                if msg.get('from_id', 0) not in duplicated_users and msg.get('from_id', 0) > 0
             ]
             
             # Создаем отфильтрованный результат
@@ -273,12 +279,133 @@ class ChatAnalyzer:
     
     def _calculate_final_stats(self, filtered_results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Вычисляет итоговую статистику"""
-        total_members = sum(len(result['filtered_members']) for result in filtered_results)
+        # Считаем уникальных участников (без дублирования между чатами)
+        all_unique_members = set()
+        for result in filtered_results:
+            all_unique_members.update(result['filtered_members'])
+        
+        total_unique_members = len(all_unique_members)
         total_messages = sum(len(result['filtered_messages']) for result in filtered_results)
         total_excluded_members = sum(result['excluded_members'] for result in filtered_results)
         total_excluded_messages = sum(result['excluded_messages'] for result in filtered_results)
         
-        logger.info(f"Final stats: {len(filtered_results)} chats, {total_members} unique members, {total_messages} messages")
+        logger.info(f"Final stats: {len(filtered_results)} chats, {total_unique_members} unique members, {total_messages} messages")
         logger.info(f"Excluded: {total_excluded_members} members, {total_excluded_messages} messages")
         
         return filtered_results
+    
+    async def _analyze_chats_in_batches(self, batch_size: int) -> List[Dict[str, Any]]:
+        """Анализ чатов пакетами для больших объемов"""
+        logger.info(f"Processing {len(config.VK_CHATS)} chats in batches of {batch_size}")
+        
+        all_results = []
+        total_batches = (len(config.VK_CHATS) + batch_size - 1) // batch_size
+        
+        for batch_num in range(total_batches):
+            start_idx = batch_num * batch_size
+            end_idx = min(start_idx + batch_size, len(config.VK_CHATS))
+            batch_chats = config.VK_CHATS[start_idx:end_idx]
+            
+            logger.info(f"Processing batch {batch_num + 1}/{total_batches} ({len(batch_chats)} chats)")
+            
+            # Временно заменяем конфигурацию на текущий пакет
+            original_chats = config.VK_CHATS
+            config.VK_CHATS = batch_chats
+            
+            try:
+                # Анализируем текущий пакет
+                batch_results = await self._analyze_single_batch()
+                all_results.extend(batch_results)
+                
+                # Сохраняем промежуточные результаты
+                await self._save_batch_results(batch_results, batch_num)
+                
+            finally:
+                # Восстанавливаем оригинальную конфигурацию
+                config.VK_CHATS = original_chats
+            
+            # Небольшая пауза между пакетами
+            if batch_num < total_batches - 1:
+                await asyncio.sleep(2)
+        
+        logger.info(f"Completed processing all {len(config.VK_CHATS)} chats")
+        return all_results
+    
+    async def _analyze_single_batch(self) -> List[Dict[str, Any]]:
+        """Анализ одного пакета чатов"""
+        semaphore = asyncio.Semaphore(20)  # Максимум 20 параллельных чатов
+        
+        async def analyze_chat_with_semaphore(chat_config, index):
+            async with semaphore:
+                group_id = chat_config["group_id"]
+                token = chat_config["token"]
+                chat_name = f"Chat {index+1}"
+                
+                try:
+                    logger.info(f"Analyzing chat {index+1}/{len(config.VK_CHATS)}: {chat_name} (Group ID: {group_id})")
+                    return await self._analyze_single_chat(group_id, token, chat_name)
+                except Exception as e:
+                    logger.error(f"Failed to analyze chat {group_id}: {e}")
+                    return None
+        
+        # Создаем задачи для всех чатов в пакете
+        tasks = [
+            analyze_chat_with_semaphore(chat_config, i) 
+            for i, chat_config in enumerate(config.VK_CHATS)
+        ]
+        
+        # Обрабатываем все чаты параллельно
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Фильтруем успешные результаты
+        return [r for r in results if r is not None and not isinstance(r, Exception)]
+    
+    async def _save_batch_results(self, batch_results: List[Dict[str, Any]], batch_num: int):
+        """Сохранение результатов пакета"""
+        try:
+            logger.info(f"Saving batch {batch_num + 1} results ({len(batch_results)} chats)")
+            
+            # Анализируем дублирование для текущего пакета
+            duplication_info = self._analyze_user_duplication_for_batch(batch_results)
+            
+            # Фильтруем данные
+            filtered_results = self._filter_duplicated_data(duplication_info['duplicated_users'])
+            
+            # Сохраняем в базу данных
+            await self._save_to_database_optimized(filtered_results)
+            
+            logger.info(f"Batch {batch_num + 1} saved successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to save batch {batch_num + 1}: {e}")
+    
+    def _analyze_user_duplication_for_batch(self, batch_results: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Анализирует дублирование пользователей для пакета"""
+        user_chats = {}
+        
+        for result in batch_results:
+            chat_name = result['chat_name']
+            for user_id in result['all_members']:
+                if user_id not in user_chats:
+                    user_chats[user_id] = []
+                user_chats[user_id].append(chat_name)
+        
+        duplicated_users = []
+        unique_users = []
+        
+        for user_id, chats in user_chats.items():
+            if len(chats) > 1:  # Дублированный если в более чем 1 чате
+                duplicated_users.append(user_id)
+            else:
+                unique_users.append(user_id)
+        
+        return {
+            'user_chats': user_chats,
+            'duplicated_users': duplicated_users,
+            'unique_users': unique_users,
+            'duplication_stats': {
+                'total_users': len(user_chats),
+                'duplicated_count': len(duplicated_users),
+                'unique_count': len(unique_users)
+            }
+        }

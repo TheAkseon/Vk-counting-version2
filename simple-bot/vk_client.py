@@ -63,6 +63,7 @@ class VKClient:
             })
             
             members = response.get("response", {}).get("items", [])
+            # Фильтруем только реальных пользователей (положительные ID) и исключаем удаленные страницы
             real_users = [member["member_id"] for member in members if member.get("member_id", 0) > 0]
             
             logger.info(f"Found {len(real_users)} members")
@@ -102,7 +103,7 @@ class VKClient:
                     if month_ago <= msg.get("date", 0) <= current_time
                 ]
                 
-                # Фильтруем реальные сообщения
+                # Фильтруем реальные сообщения (исключаем удаленные страницы)
                 real_messages = [
                     msg for msg in month_messages 
                     if msg.get("from_id", 0) > 0
