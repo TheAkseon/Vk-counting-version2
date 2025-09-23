@@ -25,10 +25,17 @@ class ChatAnalyzer:
     
     async def analyze_all_chats(self, batch_size: int = 100) -> List[Dict[str, Any]]:
         """Анализ всех чатов с логикой старого бота"""
-        logger.info(f"Starting parallel analysis of {len(config.VK_CHATS)} chats with old logic")
+        # Получаем чаты из CSV или fallback на статический список
+        vk_chats = config.get_vk_chats()
+        
+        if not vk_chats:
+            logger.error("No VK chats available for analysis. Please upload CSV file first.")
+            return []
+        
+        logger.info(f"Starting parallel analysis of {len(vk_chats)} chats with old logic")
         
         # Если чатов много, обрабатываем пакетами
-        if len(config.VK_CHATS) > batch_size:
+        if len(vk_chats) > batch_size:
             return await self._analyze_chats_in_batches(batch_size)
         
         # Шаг 1: Анализируем чаты параллельно (по 20 одновременно)
@@ -50,7 +57,7 @@ class ChatAnalyzer:
         # Создаем задачи для всех чатов
         tasks = [
             analyze_chat_with_semaphore(chat_config, i) 
-            for i, chat_config in enumerate(config.VK_CHATS)
+            for i, chat_config in enumerate(vk_chats)
         ]
         
         # Обрабатываем все чаты параллельно
@@ -59,7 +66,7 @@ class ChatAnalyzer:
         # Фильтруем успешные результаты
         self.all_results = [r for r in results if r is not None and not isinstance(r, Exception)]
         
-        logger.info(f"Successfully analyzed {len(self.all_results)} out of {len(config.VK_CHATS)} chats")
+        logger.info(f"Successfully analyzed {len(self.all_results)} out of {len(vk_chats)} chats")
         
         # Шаг 2: Анализируем дублирование пользователей
         duplication_info = self._analyze_user_duplication()
@@ -293,42 +300,37 @@ class ChatAnalyzer:
     
     async def _analyze_chats_in_batches(self, batch_size: int) -> List[Dict[str, Any]]:
         """Анализ чатов пакетами для больших объемов"""
-        logger.info(f"Processing {len(config.VK_CHATS)} chats in batches of {batch_size}")
+        vk_chats = config.get_vk_chats()
+        logger.info(f"Processing {len(vk_chats)} chats in batches of {batch_size}")
         
         all_results = []
-        total_batches = (len(config.VK_CHATS) + batch_size - 1) // batch_size
+        total_batches = (len(vk_chats) + batch_size - 1) // batch_size
         
         for batch_num in range(total_batches):
             start_idx = batch_num * batch_size
-            end_idx = min(start_idx + batch_size, len(config.VK_CHATS))
-            batch_chats = config.VK_CHATS[start_idx:end_idx]
+            end_idx = min(start_idx + batch_size, len(vk_chats))
+            batch_chats = vk_chats[start_idx:end_idx]
             
             logger.info(f"Processing batch {batch_num + 1}/{total_batches} ({len(batch_chats)} chats)")
             
-            # Временно заменяем конфигурацию на текущий пакет
-            original_chats = config.VK_CHATS
-            config.VK_CHATS = batch_chats
-            
             try:
                 # Анализируем текущий пакет
-                batch_results = await self._analyze_single_batch()
+                batch_results = await self._analyze_single_batch(batch_chats)
                 all_results.extend(batch_results)
                 
                 # Сохраняем промежуточные результаты
                 await self._save_batch_results(batch_results, batch_num)
-                
-            finally:
-                # Восстанавливаем оригинальную конфигурацию
-                config.VK_CHATS = original_chats
+            except Exception as e:
+                logger.error(f"Error processing batch {batch_num + 1}: {e}")
             
             # Небольшая пауза между пакетами
             if batch_num < total_batches - 1:
                 await asyncio.sleep(2)
         
-        logger.info(f"Completed processing all {len(config.VK_CHATS)} chats")
+        logger.info(f"Completed processing all {len(vk_chats)} chats")
         return all_results
     
-    async def _analyze_single_batch(self) -> List[Dict[str, Any]]:
+    async def _analyze_single_batch(self, batch_chats: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Анализ одного пакета чатов"""
         semaphore = asyncio.Semaphore(20)  # Максимум 20 параллельных чатов
         
@@ -336,10 +338,10 @@ class ChatAnalyzer:
             async with semaphore:
                 group_id = chat_config["group_id"]
                 token = chat_config["token"]
-                chat_name = f"Chat {index+1}"
+                chat_name = chat_config.get("chat_name", f"Chat {index+1}")
                 
                 try:
-                    logger.info(f"Analyzing chat {index+1}/{len(config.VK_CHATS)}: {chat_name} (Group ID: {group_id})")
+                    logger.info(f"Analyzing chat {index+1}/{len(batch_chats)}: {chat_name} (Group ID: {group_id})")
                     return await self._analyze_single_chat(group_id, token, chat_name)
                 except Exception as e:
                     logger.error(f"Failed to analyze chat {group_id}: {e}")
@@ -348,7 +350,7 @@ class ChatAnalyzer:
         # Создаем задачи для всех чатов в пакете
         tasks = [
             analyze_chat_with_semaphore(chat_config, i) 
-            for i, chat_config in enumerate(config.VK_CHATS)
+            for i, chat_config in enumerate(batch_chats)
         ]
         
         # Обрабатываем все чаты параллельно

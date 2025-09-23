@@ -3,7 +3,9 @@
 """
 import json
 import os
+from typing import List, Dict, Any
 from dotenv import load_dotenv
+from csv_parser import CSVParser
 
 # Загружаем переменные окружения
 load_dotenv('.env')
@@ -51,6 +53,19 @@ class Config:
     def database_url(self):
         """URL для подключения к базе данных"""
         return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+    
+    def get_vk_chats(self) -> List[Dict[str, Any]]:
+        """Получает список VK чатов из CSV или fallback на статический список"""
+        csv_parser = CSVParser()
+        
+        # Пытаемся загрузить из CSV
+        if csv_parser.is_csv_available():
+            chats = csv_parser.parse_csv()
+            if chats:
+                return chats
+        
+        # Fallback на статический список если CSV недоступен
+        return self.VK_CHATS
 
 # Глобальный экземпляр конфигурации
 config = Config()
