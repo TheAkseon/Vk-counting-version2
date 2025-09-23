@@ -37,7 +37,6 @@ class TelegramBot:
     async def start_command(self, message: types.Message):
         """Обработчик команды /start"""
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="📊 Получить статистику", callback_data="stats")],
             [InlineKeyboardButton(text="🚀 Запустить анализ", callback_data="analyze")],
             [InlineKeyboardButton(text="📥 Экспорт данных", callback_data="export")]
         ])
@@ -56,26 +55,36 @@ class TelegramBot:
         try:
             stats = await db.get_stats()
             
-            report = (
-                f"📊 **Статистика VK чатов**\n\n"
-                f"📅 Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n"
-                f"**Общая статистика:**\n"
-                f"• 💬 Чатов: {stats['total_chats']}\n"
-                f"• 👥 Участников: {stats['total_members']}\n"
-                f"• 💬 Сообщений: {stats['total_messages']}\n\n"
-                f"**За сегодня:**\n"
-                f"• 💬 Чатов: {stats['total_chats']}\n"
-                f"• 👥 Участников: {stats['total_members']}\n"
-                f"• 💬 Сообщений: {stats['total_messages']}\n"
-                f"• 🔢 Уникальных участников: {stats['unique_users']}\n"
-                f"• 🔢 Уникальных сообщений: {stats['unique_users']}"
-            )
-            
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔄 Обновить", callback_data="stats")],
-                [InlineKeyboardButton(text="🚀 Запустить анализ", callback_data="analyze")],
-                [InlineKeyboardButton(text="📥 Экспорт данных", callback_data="export")]
-            ])
+            # Проверяем, есть ли данные
+            if not stats.get('has_data', False):
+                report = (
+                    f"📊 **Статистика VK чатов**\n\n"
+                    f"📅 Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n"
+                    f"⚠️ **Пока что вы не делали анализ!**\n\n"
+                    f"Для получения статистики нажмите кнопку \"🚀 Запустить анализ\""
+                )
+                
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🚀 Запустить анализ", callback_data="analyze")]
+                ])
+            else:
+                report = (
+                    f"📊 **Статистика VK чатов**\n\n"
+                    f"📅 Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n"
+                    f"**Общая статистика:**\n"
+                    f"• 💬 Чатов: {stats['total_chats']}\n"
+                    f"• 👥 Уникальных участников: {stats['total_unique_members']}\n"
+                    f"• 💬 Уникальных сообщений: {stats['total_unique_messages']}\n"
+                    f"• 👤 Уникальных авторов: {stats['unique_authors']}\n\n"
+                    f"**Активность за сегодня:**\n"
+                    f"• 💬 Новых сообщений: {stats['today_unique_messages']}\n"
+                    f"• 👤 Активных авторов: {stats['today_unique_authors']}"
+                )
+                
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🚀 Запустить анализ", callback_data="analyze")],
+                    [InlineKeyboardButton(text="📥 Экспорт данных", callback_data="export")]
+                ])
             
             await callback.message.edit_text(
                 report,
@@ -88,7 +97,7 @@ class TelegramBot:
             await callback.message.edit_text(
                 f"❌ Ошибка при получении статистики: {str(e)}",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🔄 Попробовать снова", callback_data="stats")]
+                    [InlineKeyboardButton(text="🚀 Запустить анализ", callback_data="analyze")]
                 ])
             )
     
@@ -97,7 +106,7 @@ class TelegramBot:
         await callback.answer("🚀 Запускаю анализ...")
         
         try:
-            analyzer = ChatAnalyzer()
+            analyzer = ChatAnalyzer(db)
             results = await analyzer.analyze_all_chats()
             
             # Проверяем, есть ли ошибки
@@ -107,15 +116,15 @@ class TelegramBot:
                 await callback.message.edit_text(
                     f"❌ **Ошибки при анализе:**\n\n{error_msg}",
                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="🔄 Попробовать снова", callback_data="analyze")]
+                        [InlineKeyboardButton(text="🚀 Запустить анализ", callback_data="analyze")]
                     ])
                 )
             else:
-                # Суммируем статистику по всем чатам
-                total_members = sum(r['members_count'] for r in results)
-                total_messages = sum(r.get('messages_last_month', 0) for r in results)
-                total_unique_members = sum(r.get('members_count', 0) for r in results)
-                total_unique_messages = sum(r.get('messages_last_month', 0) for r in results)
+                # Суммируем статистику по всем чатам (используем отфильтрованные данные)
+                total_members = sum(len(r.get('filtered_members', [])) for r in results)
+                total_messages = sum(len(r.get('filtered_messages', [])) for r in results)
+                total_unique_members = sum(len(r.get('filtered_members', [])) for r in results)
+                total_unique_messages = sum(len(r.get('filtered_messages', [])) for r in results)
                 
                 report = (
                     f"✅ **Анализ завершен!**\n\n"
@@ -129,9 +138,9 @@ class TelegramBot:
                     f"**По чатам:**\n"
                 )
                 
-                # Добавляем статистику по каждому чату
+                # Добавляем статистику по каждому чату (используем отфильтрованные данные)
                 for result in results:
-                    report += f"• 💬 {result['chat_name']}: 👥 {result['members_count']} участников, 💬 {result.get('messages_last_month', 0)} сообщений\n"
+                    report += f"• 💬 {result['chat_name']}: 👥 {len(result.get('filtered_members', []))} участников, 💬 {len(result.get('filtered_messages', []))} сообщений\n"
                 
                 keyboard = InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(text="📊 Получить статистику", callback_data="stats")],
@@ -149,7 +158,7 @@ class TelegramBot:
             await callback.message.edit_text(
                 f"❌ Ошибка при запуске анализа: {str(e)}",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🔄 Попробовать снова", callback_data="analyze")]
+                    [InlineKeyboardButton(text="🚀 Запустить анализ", callback_data="analyze")]
                 ])
             )
     
@@ -221,7 +230,7 @@ class TelegramBot:
                     f"**Ошибка экспорта {description}**\n\n"
                     "Не удалось получить данные для экспорта.",
                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="🔄 Попробовать снова", callback_data=f"export_{export_type}")],
+                        [InlineKeyboardButton(text="🚀 Запустить анализ", callback_data="analyze")],
                         [InlineKeyboardButton(text="📥 Меню экспорта", callback_data="export")]
                     ])
                 )
@@ -253,7 +262,7 @@ class TelegramBot:
             await callback.message.edit_text(
                 f"❌ Ошибка при экспорте {description}: {str(e)}",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🔄 Попробовать снова", callback_data=f"export_{export_type}")],
+                    [InlineKeyboardButton(text="🚀 Запустить анализ", callback_data="analyze")],
                     [InlineKeyboardButton(text="📥 Меню экспорта", callback_data="export")]
                 ])
             )

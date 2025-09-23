@@ -223,35 +223,61 @@ class Database:
     async def get_stats(self) -> Dict[str, Any]:
         """Получает общую статистику"""
         try:
+            from datetime import datetime, date
+            
             # Получаем количество чатов
             async with self.connection.execute("SELECT COUNT(*) FROM chats") as cursor:
                 total_chats = (await cursor.fetchone())[0] or 0
 
-            # Получаем общее количество участников
-            async with self.connection.execute("SELECT SUM(members_count) FROM chats") as cursor:
-                total_members = (await cursor.fetchone())[0] or 0
+            # Получаем количество УНИКАЛЬНЫХ участников (из chat_members)
+            async with self.connection.execute("SELECT COUNT(DISTINCT vk_id) FROM chat_members WHERE is_active = 1") as cursor:
+                total_unique_members = (await cursor.fetchone())[0] or 0
 
-            # Получаем общее количество сообщений
-            async with self.connection.execute("SELECT COUNT(*) FROM messages") as cursor:
-                total_messages = (await cursor.fetchone())[0] or 0
+            # Получаем количество УНИКАЛЬНЫХ сообщений
+            async with self.connection.execute("SELECT COUNT(DISTINCT message_id) FROM messages") as cursor:
+                total_unique_messages = (await cursor.fetchone())[0] or 0
 
-            # Получаем количество уникальных пользователей
+            # Получаем количество уникальных авторов сообщений (из messages)
             async with self.connection.execute("SELECT COUNT(DISTINCT user_id) FROM messages") as cursor:
-                unique_users = (await cursor.fetchone())[0] or 0
+                unique_authors = (await cursor.fetchone())[0] or 0
+
+            # Получаем статистику за сегодня (только для информации)
+            today = date.today()
+            async with self.connection.execute("""
+                SELECT COUNT(DISTINCT message_id) FROM messages 
+                WHERE DATE(date) = ?
+            """, (today,)) as cursor:
+                today_unique_messages = (await cursor.fetchone())[0] or 0
+
+            # Получаем уникальных авторов сообщений за сегодня
+            async with self.connection.execute("""
+                SELECT COUNT(DISTINCT user_id) FROM messages 
+                WHERE DATE(date) = ?
+            """, (today,)) as cursor:
+                today_unique_authors = (await cursor.fetchone())[0] or 0
+
+            # Проверяем, есть ли данные
+            has_data = total_chats > 0 or total_unique_members > 0 or total_unique_messages > 0
 
             return {
                 'total_chats': total_chats,
-                'total_members': total_members,
-                'total_messages': total_messages,
-                'unique_users': unique_users
+                'total_unique_members': total_unique_members,  # Общее количество уникальных участников
+                'total_unique_messages': total_unique_messages,  # Общее количество уникальных сообщений
+                'unique_authors': unique_authors,  # Общее количество уникальных авторов
+                'has_data': has_data,
+                'today_unique_messages': today_unique_messages,  # Сообщения за сегодня
+                'today_unique_authors': today_unique_authors  # Авторы за сегодня
             }
         except Exception as e:
             logger.error(f"Failed to get stats: {e}")
             return {
                 'total_chats': 0,
-                'total_members': 0,
-                'total_messages': 0,
-                'unique_users': 0
+                'total_unique_members': 0,
+                'total_unique_messages': 0,
+                'unique_authors': 0,
+                'has_data': False,
+                'today_unique_messages': 0,
+                'today_unique_authors': 0
             }
 
 # Глобальный экземпляр базы данных

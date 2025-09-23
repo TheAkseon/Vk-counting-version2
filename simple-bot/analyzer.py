@@ -13,8 +13,8 @@ from vk_client import VKClient
 class ChatAnalyzer:
     """Анализатор чатов"""
     
-    def __init__(self):
-        self.db = db
+    def __init__(self, db_instance=None):
+        self.db = db_instance or db
         self.total_members = 0
         self.total_messages = 0
         self.duplicated_users = 0
@@ -194,6 +194,9 @@ class ChatAnalyzer:
     async def _save_to_database_optimized(self, filtered_results: List[Dict[str, Any]]):
         """Сохранение отфильтрованных данных в базу данных"""
         try:
+            # Убеждаемся, что база данных инициализирована
+            if not hasattr(db, 'connection') or db.connection is None:
+                await db.initialize()
             # Собираем все данные для batch операций
             all_users = set()
             all_messages = []
@@ -206,24 +209,27 @@ class ChatAnalyzer:
             
             # Batch сохранение пользователей
             user_id_map = {}
+            logger.info(f"Saving {len(all_users)} users to database")
             for user_id in all_users:
                 if user_id:
-                    db_user_id = await db.save_user(user_id)
+                    db_user_id = await self.db.save_user(user_id)
                     user_id_map[user_id] = db_user_id
             
             # Обрабатываем каждый чат
+            logger.info(f"Processing {len(filtered_results)} chats for database saving")
             for result in filtered_results:
                 # Сохраняем чат
-                chat_id = await db.save_chat(
+                logger.info(f"Saving chat {result['chat_name']} with {len(result['filtered_members'])} members")
+                chat_id = await self.db.save_chat(
                     result['group_id'], 
                     result['chat_name'], 
-                    result['members_count']
+                    len(result['filtered_members'])
                 )
                 
                 # Сохраняем участников чата
                 for user_id in result['filtered_members']:
                     if str(user_id) in user_id_map:
-                        await db.save_chat_member(
+                        await self.db.save_chat_member(
                             chat_id, user_id_map[str(user_id)], str(user_id), "", "", ""
                         )
                 
@@ -246,19 +252,19 @@ class ChatAnalyzer:
                 all_stats.append((
                     chat_id,
                     datetime.now(),
-                    result['members_count'],
-                    result['messages_last_month'],
+                    len(result['filtered_members']),
+                    len(result['filtered_messages']),
                     unique_members,
                     unique_messages
                 ))
             
             # Batch сохранение сообщений
             for message_data in all_messages:
-                await db.save_message(*message_data)
+                await self.db.save_message(*message_data)
             
             # Batch сохранение статистики
             for stats_data in all_stats:
-                await db.save_daily_stats(*stats_data)
+                await self.db.save_daily_stats(*stats_data)
                 
             logger.info(f"Saved {len(all_messages)} messages and {len(all_stats)} stats records")
                 
@@ -267,8 +273,8 @@ class ChatAnalyzer:
     
     def _calculate_final_stats(self, filtered_results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Вычисляет итоговую статистику"""
-        total_members = sum(result['members_count'] for result in filtered_results)
-        total_messages = sum(result['messages_last_month'] for result in filtered_results)
+        total_members = sum(len(result['filtered_members']) for result in filtered_results)
+        total_messages = sum(len(result['filtered_messages']) for result in filtered_results)
         total_excluded_members = sum(result['excluded_members'] for result in filtered_results)
         total_excluded_messages = sum(result['excluded_messages'] for result in filtered_results)
         
