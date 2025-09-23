@@ -3,7 +3,7 @@
 """
 import asyncio
 import aiosqlite
-from datetime import datetime
+from datetime import datetime, date
 from typing import Any, Dict, List, Optional, Tuple
 from loguru import logger
 
@@ -312,6 +312,43 @@ class Database:
         except Exception as e:
             logger.error(f"Failed to get chats stats: {e}")
             return []
+
+    async def get_chat_id_by_group_id(self, group_id: str) -> Optional[int]:
+        """Получает ID чата по group_id"""
+        try:
+            async with self.connection.execute("SELECT id FROM chats WHERE group_id = ?", (group_id,)) as cursor:
+                result = await cursor.fetchone()
+                return result[0] if result else None
+        except Exception as e:
+            logger.error(f"Failed to get chat_id by group_id {group_id}: {e}")
+            return None
+
+    async def get_today_stats_for_chat(self, chat_id: int) -> Dict[str, int]:
+        """Получает статистику за сегодня для конкретного чата"""
+        try:
+            today = date.today()
+            
+            # Сообщения за сегодня
+            async with self.connection.execute("""
+                SELECT COUNT(DISTINCT message_id) FROM messages 
+                WHERE chat_id = ? AND DATE(date) = ?
+            """, (chat_id, today)) as cursor:
+                messages = (await cursor.fetchone())[0] or 0
+            
+            # Авторы за сегодня
+            async with self.connection.execute("""
+                SELECT COUNT(DISTINCT user_id) FROM messages 
+                WHERE chat_id = ? AND DATE(date) = ?
+            """, (chat_id, today)) as cursor:
+                authors = (await cursor.fetchone())[0] or 0
+            
+            return {
+                'messages': messages,
+                'authors': authors
+            }
+        except Exception as e:
+            logger.error(f"Failed to get today stats for chat {chat_id}: {e}")
+            return {'messages': 0, 'authors': 0}
 
 # Глобальный экземпляр базы данных
 db = Database()

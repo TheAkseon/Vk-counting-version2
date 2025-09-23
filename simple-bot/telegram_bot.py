@@ -86,12 +86,23 @@ class TelegramBot:
             csv_total_authors = 0
             csv_chats_count = 0
             
+            # Получаем активность за сегодня только для чатов из CSV
+            csv_today_messages = 0
+            csv_today_authors = 0
+            
             for chat in chats_stats:
                 if chat['group_id'] in csv_group_ids:
                     csv_total_members += chat['unique_members']
                     csv_total_messages += chat['unique_messages']
                     csv_total_authors += chat.get('unique_authors', 0)
                     csv_chats_count += 1
+                    
+                    # Получаем активность за сегодня для этого чата
+                    chat_id = await db.get_chat_id_by_group_id(chat['group_id'])
+                    if chat_id:
+                        today_stats = await db.get_today_stats_for_chat(chat_id)
+                        csv_today_messages += today_stats['messages']
+                        csv_today_authors += today_stats['authors']
             
             # Проверяем, есть ли данные
             if csv_chats_count == 0:
@@ -115,8 +126,8 @@ class TelegramBot:
                     f"• 💬 Уникальных сообщений: {csv_total_messages}\n"
                     f"• 👤 Уникальных авторов: {csv_total_authors}\n\n"
                     f"**Активность за сегодня:**\n"
-                    f"• 💬 Новых сообщений: {stats['today_unique_messages']}\n"
-                    f"• 👤 Активных авторов: {stats['today_unique_authors']}"
+                    f"• 💬 Новых сообщений: {csv_today_messages}\n"
+                    f"• 👤 Активных авторов: {csv_today_authors}"
                 )
                 
                 keyboard = InlineKeyboardMarkup(inline_keyboard=[
