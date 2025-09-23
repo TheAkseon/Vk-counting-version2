@@ -37,7 +37,7 @@ class Scheduler:
         while self.running:
             try:
                 now = datetime.now()
-                target_time = time(00, 14)  
+                target_time = time(00, 18)  
                 
                 # Вычисляем время до следующего запуска
                 next_run = datetime.combine(now.date(), target_time)
@@ -124,9 +124,10 @@ class Scheduler:
             logger.error(f"Failed to send daily report: {e}")
     
     async def _create_daily_report_csv(self, results):
-        """Создает CSV с актуальными результатами анализа"""
+        """Создает CSV с актуальными результатами анализа в том же формате, что и экспорт"""
         import csv
         import io
+        from csv_parser import CSVParser
         
         output = io.StringIO()
         writer = csv.writer(output)
@@ -135,43 +136,59 @@ class Scheduler:
         writer.writerow(["VK Chat Statistics Export"])
         writer.writerow([])
         
+        # Получаем данные из CSV файла
+        csv_parser = CSVParser()
+        vk_chats = csv_parser.parse_csv()
+        
         # Общая статистика
+        writer.writerow(["1. Общая статистика по всем чатам:"])
+        writer.writerow(["Дата:", datetime.now().strftime('%d.%m.%Y %H:%M')])
+        writer.writerow(["Обработано чатов:", len(results)])
+        writer.writerow([])
+        
+        # Считаем статистику из результатов анализа
         total_members = sum(len(r.get('filtered_members', [])) for r in results)
         total_messages = sum(len(r.get('filtered_messages', [])) for r in results)
         
-        writer.writerow(["1. Общая статистика по всем чатам:"])
-        writer.writerow([f"Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}"])
-        writer.writerow([f"Обработано чатов: {len(results)}"])
-        writer.writerow([f"Общая статистика:"])
-        writer.writerow([f"Участников: {total_members}"])
-        writer.writerow([f"Сообщений (за месяц): {total_messages}"])
+        writer.writerow(["Общая статистика:"])
+        writer.writerow(["Участников:", total_members])
+        writer.writerow(["Сообщений (за месяц):", total_messages])
         writer.writerow([])
         
-        # Статистика по чатам
+        # Статистика по чатам из результатов анализа
         writer.writerow(["2. Статистика по каждому чату:"])
+        
         for result in results:
             group_id = result.get('group_id', 'Unknown')
             members_count = len(result.get('filtered_members', []))
             messages_count = len(result.get('filtered_messages', []))
-            writer.writerow([f"id группы чата: {group_id}"])
-            writer.writerow([f"{members_count} участников, {messages_count} сообщений"])
+            writer.writerow([
+                f"id группы чата: {group_id}",
+                f"{members_count} участников,",
+                f"{messages_count} сообщений"
+            ])
         
         writer.writerow([])
         
         # Информация о CSV файле
         writer.writerow(["3. Информация о CSV файле:"])
-        writer.writerow([f"Файл: data/vk_chats.csv"])
-        writer.writerow([f"Загружено чатов: {len(results)}"])
+        writer.writerow(["Файл:", "data/vk_chats.csv"])
+        writer.writerow(["Загружено чатов:", len(vk_chats)])
+        writer.writerow([])
         
         # Список чатов из CSV
-        writer.writerow([])
         writer.writerow(["4. Список чатов из CSV:"])
-        vk_chats = config.get_vk_chats()
         for i, chat in enumerate(vk_chats, 1):
-            writer.writerow([f"Чат {i}: ID: {chat['group_id']} Название: {chat['chat_name']} Активен: {'Да' if chat['is_active'] else 'Нет'}"])
+            writer.writerow([
+                f"Чат {i}:",
+                f"ID: {chat['group_id']}",
+                f"Название: {chat.get('chat_name', 'Не указано')}",
+                f"Активен: {'Да' if chat.get('is_active', True) else 'Нет'}"
+            ])
         
+        # Добавляем BOM для правильного отображения в Windows Excel
         csv_content = output.getvalue()
-        return '\ufeff' + csv_content  # Добавляем BOM для Windows Excel
+        return '\ufeff' + csv_content
     
     async def _send_error_notification(self, error_message: str):
         """Отправляет уведомление об ошибке"""
