@@ -68,7 +68,7 @@ class CSVParser:
         try:
             self.ensure_data_dir()
             
-            with open(self.csv_file_path, 'w', encoding='utf-8') as file:
+            with open(self.csv_file_path, 'w', encoding='utf-8-sig') as file:
                 file.write(csv_content)
             
             logger.info(f"CSV file saved: {self.csv_file_path}")

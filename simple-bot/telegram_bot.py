@@ -319,7 +319,9 @@ class TelegramBot:
                 f"{chat['unique_messages']} сообщений"
             ])
         
-        return output.getvalue()
+        # Добавляем BOM для правильного отображения в Windows Excel
+        csv_content = output.getvalue()
+        return '\ufeff' + csv_content
     
     async def _create_stats_csv_from_csv(self, stats: Dict[str, Any]) -> str:
         """Создает CSV с общей статистикой используя данные из CSV файла"""
@@ -394,7 +396,9 @@ class TelegramBot:
                 f"Активен: {'Да' if chat.get('is_active', True) else 'Нет'}"
             ])
         
-        return output.getvalue()
+        # Добавляем BOM для правильного отображения в Windows Excel
+        csv_content = output.getvalue()
+        return '\ufeff' + csv_content
     
     async def handle_export_all_callback(self, callback: types.CallbackQuery):
         """Экспорт всех данных"""
