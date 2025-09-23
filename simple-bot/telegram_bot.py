@@ -58,10 +58,43 @@ class TelegramBot:
         await callback.answer("📊 Получаю статистику...")
         
         try:
+            # Проверяем наличие CSV файла
+            csv_parser = CSVParser()
+            if not csv_parser.is_csv_available():
+                await callback.message.edit_text(
+                    "❌ **CSV файл не загружен**\n\n"
+                    "Для получения статистики необходимо сначала загрузить CSV файл с данными VK чатов.\n\n"
+                    "Нажмите кнопку '📊 Загрузить CSV' и отправьте файл.",
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text="📊 Загрузить CSV", callback_data="upload_csv")],
+                        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="start")]
+                    ])
+                )
+                return
+            
+            # Получаем статистику только для чатов из CSV
+            vk_chats = csv_parser.parse_csv()
+            csv_group_ids = {chat['group_id'] for chat in vk_chats}
+            
+            # Получаем статистику из базы данных
             stats = await db.get_stats()
             
+            # Фильтруем статистику только для чатов из CSV
+            chats_stats = await db.get_chats_stats()
+            csv_total_members = 0
+            csv_total_messages = 0
+            csv_total_authors = 0
+            csv_chats_count = 0
+            
+            for chat in chats_stats:
+                if chat['group_id'] in csv_group_ids:
+                    csv_total_members += chat['unique_members']
+                    csv_total_messages += chat['unique_messages']
+                    csv_total_authors += chat.get('unique_authors', 0)
+                    csv_chats_count += 1
+            
             # Проверяем, есть ли данные
-            if not stats.get('has_data', False):
+            if csv_chats_count == 0:
                 report = (
                     f"📊 **Статистика VK чатов**\n\n"
                     f"📅 Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n"
@@ -77,10 +110,10 @@ class TelegramBot:
                     f"📊 **Статистика VK чатов**\n\n"
                     f"📅 Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n"
                     f"**Общая статистика:**\n"
-                    f"• 💬 Чатов: {stats['total_chats']}\n"
-                    f"• 👥 Уникальных участников: {stats['total_unique_members']}\n"
-                    f"• 💬 Уникальных сообщений: {stats['total_unique_messages']}\n"
-                    f"• 👤 Уникальных авторов: {stats['unique_authors']}\n\n"
+                    f"• 💬 Чатов: {csv_chats_count}\n"
+                    f"• 👥 Уникальных участников: {csv_total_members}\n"
+                    f"• 💬 Уникальных сообщений: {csv_total_messages}\n"
+                    f"• 👤 Уникальных авторов: {csv_total_authors}\n\n"
                     f"**Активность за сегодня:**\n"
                     f"• 💬 Новых сообщений: {stats['today_unique_messages']}\n"
                     f"• 👤 Активных авторов: {stats['today_unique_authors']}"
@@ -298,22 +331,39 @@ class TelegramBot:
         writer.writerow(["Дата:", datetime.now().strftime('%d.%m.%Y %H:%M')])
         writer.writerow(["Обработано чатов:", len(vk_chats)])
         writer.writerow([])
+        
+        # Получаем актуальную статистику только для чатов из CSV
+        csv_group_ids = {chat['group_id'] for chat in vk_chats}
+        total_members = 0
+        total_messages = 0
+        
+        # Считаем статистику только для чатов из CSV
+        chats_stats = await db.get_chats_stats()
+        for chat in chats_stats:
+            if chat['group_id'] in csv_group_ids:
+                total_members += chat['unique_members']
+                total_messages += chat['unique_messages']
+        
         writer.writerow(["Общая статистика:"])
-        writer.writerow(["Участников:", stats['total_unique_members']])
-        writer.writerow(["Сообщений (за месяц):", stats['total_unique_messages']])
+        writer.writerow(["Участников:", total_members])
+        writer.writerow(["Сообщений (за месяц):", total_messages])
         writer.writerow([])
         
         # Статистика по чатам из CSV файла
         writer.writerow(["2. Статистика по каждому чату:"])
         
-        # Получаем данные по чатам из базы данных
+        # Получаем данные по чатам из базы данных только для чатов из CSV
         chats_stats = await db.get_chats_stats()
+        csv_group_ids = {chat['group_id'] for chat in vk_chats}
+        
         for chat in chats_stats:
-            writer.writerow([
-                f"id группы чата: {chat['group_id']}",
-                f"{chat['unique_members']} участников,",
-                f"{chat['unique_messages']} сообщений"
-            ])
+            # Показываем только чаты, которые есть в CSV файле
+            if chat['group_id'] in csv_group_ids:
+                writer.writerow([
+                    f"id группы чата: {chat['group_id']}",
+                    f"{chat['unique_members']} участников,",
+                    f"{chat['unique_messages']} сообщений"
+                ])
         
         writer.writerow([])
         

@@ -205,8 +205,8 @@ class ChatAnalyzer:
         """Сохранение отфильтрованных данных в базу данных"""
         try:
             # Убеждаемся, что база данных инициализирована
-            if not hasattr(db, 'connection') or db.connection is None:
-                await db.initialize()
+            if not hasattr(self.db, 'connection') or self.db.connection is None:
+                await self.db.initialize()
             # Собираем все данные для batch операций
             all_users = set()
             all_messages = []
@@ -275,7 +275,9 @@ class ChatAnalyzer:
             # Batch сохранение статистики
             for stats_data in all_stats:
                 await self.db.save_daily_stats(*stats_data)
-                
+            
+            # Коммитим все изменения
+            await self.db.connection.commit()
             logger.info(f"Saved {len(all_messages)} messages and {len(all_stats)} stats records")
                 
         except Exception as e:
