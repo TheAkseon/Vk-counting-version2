@@ -1,5 +1,5 @@
 """
-Главный файл простого VK бота
+Главный файл VK бота
 """
 import asyncio
 import signal

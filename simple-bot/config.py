@@ -1,5 +1,5 @@
 """
-Простая конфигурация для VK бота (как в старом боте)
+Конфигурация для VK бота 
 """
 import json
 import os
@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 load_dotenv('.env')
 
 class Config:
-    """Простая конфигурация как в старом боте"""
+    """Конфигурация"""
     
     # Telegram
     TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')

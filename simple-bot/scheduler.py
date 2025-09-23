@@ -1,11 +1,11 @@
 """
-Простой планировщик для ежедневного анализа
+Планировщик для ежедневного анализа
 """
 import asyncio
 from datetime import datetime, time, timedelta
 from loguru import logger
-from analyzer import ChatAnalyzer
 from database_sqlite import db
+from analyzer import ChatAnalyzer
 
 class Scheduler:
     """Простой планировщик"""

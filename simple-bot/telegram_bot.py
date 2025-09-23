@@ -11,7 +11,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from loguru import logger
 from config import config
 from database_sqlite import db
-from analyzer_old_logic import OldLogicChatAnalyzer
+from analyzer import ChatAnalyzer
 from export import DataExporter
 
 class TelegramBot:
@@ -60,15 +60,15 @@ class TelegramBot:
                 f"📊 **Статистика VK чатов**\n\n"
                 f"📅 Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n"
                 f"**Общая статистика:**\n"
-                f"• Чатов: {stats['total_chats']}\n"
-                f"• Участников: {stats['total_members']}\n"
-                f"• Сообщений: {stats['total_messages']}\n\n"
+                f"• 💬 Чатов: {stats['total_chats']}\n"
+                f"• 👥 Участников: {stats['total_members']}\n"
+                f"• 💬 Сообщений: {stats['total_messages']}\n\n"
                 f"**За сегодня:**\n"
-                f"• Чатов: {stats['total_chats']}\n"
-                f"• Участников: {stats['total_members']}\n"
-                f"• Сообщений: {stats['total_messages']}\n"
-                f"• Уникальных участников: {stats['unique_users']}\n"
-                f"• Уникальных сообщений: {stats['unique_users']}"
+                f"• 💬 Чатов: {stats['total_chats']}\n"
+                f"• 👥 Участников: {stats['total_members']}\n"
+                f"• 💬 Сообщений: {stats['total_messages']}\n"
+                f"• 🔢 Уникальных участников: {stats['unique_users']}\n"
+                f"• 🔢 Уникальных сообщений: {stats['unique_users']}"
             )
             
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -97,13 +97,13 @@ class TelegramBot:
         await callback.answer("🚀 Запускаю анализ...")
         
         try:
-            analyzer = OldLogicChatAnalyzer()
+            analyzer = ChatAnalyzer()
             results = await analyzer.analyze_all_chats()
             
             # Проверяем, есть ли ошибки
             errors = [r for r in results if "error" in r]
             if errors:
-                error_msg = "\n".join([f"• {r['chat_name']}: {r['error']}" for r in errors])
+                error_msg = "\n".join([f"• ❌ {r['chat_name']}: {r['error']}" for r in errors])
                 await callback.message.edit_text(
                     f"❌ **Ошибки при анализе:**\n\n{error_msg}",
                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -131,7 +131,7 @@ class TelegramBot:
                 
                 # Добавляем статистику по каждому чату
                 for result in results:
-                    report += f"• {result['chat_name']}: {result['members_count']} участников, {result.get('messages_last_month', 0)} сообщений\n"
+                    report += f"• 💬 {result['chat_name']}: 👥 {result['members_count']} участников, 💬 {result.get('messages_last_month', 0)} сообщений\n"
                 
                 keyboard = InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(text="📊 Получить статистику", callback_data="stats")],
@@ -174,27 +174,27 @@ class TelegramBot:
     
     async def handle_export_all_callback(self, callback: types.CallbackQuery):
         """Экспорт всех данных"""
-        await callback.answer("📊 Экспортирую все данные...")
+        await callback.answer("Экспортирую все данные...")
         await self._export_data(callback, "all", "Все данные (сводный отчет)")
     
     async def handle_export_chats_callback(self, callback: types.CallbackQuery):
         """Экспорт чатов"""
-        await callback.answer("💬 Экспортирую чаты...")
+        await callback.answer("Экспортирую чаты...")
         await self._export_data(callback, "chats", "Чаты")
     
     async def handle_export_users_callback(self, callback: types.CallbackQuery):
         """Экспорт пользователей"""
-        await callback.answer("👥 Экспортирую пользователей...")
+        await callback.answer("Экспортирую пользователей...")
         await self._export_data(callback, "users", "Пользователи")
     
     async def handle_export_messages_callback(self, callback: types.CallbackQuery):
         """Экспорт сообщений"""
-        await callback.answer("💬 Экспортирую сообщения...")
+        await callback.answer("Экспортирую сообщения...")
         await self._export_data(callback, "messages", "Сообщения")
     
     async def handle_export_stats_callback(self, callback: types.CallbackQuery):
         """Экспорт статистики"""
-        await callback.answer("📈 Экспортирую статистику...")
+        await callback.answer("Экспортирую статистику...")
         await self._export_data(callback, "stats", "Дневная статистика")
     
     async def _export_data(self, callback: types.CallbackQuery, export_type: str, description: str):
@@ -218,7 +218,7 @@ class TelegramBot:
             
             if not csv_data:
                 await callback.message.edit_text(
-                    f"❌ **Ошибка экспорта {description}**\n\n"
+                    f"**Ошибка экспорта {description}**\n\n"
                     "Не удалось получить данные для экспорта.",
                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                         [InlineKeyboardButton(text="🔄 Попробовать снова", callback_data=f"export_{export_type}")],

@@ -1,5 +1,5 @@
 """
-База данных SQLite для упрощенного VK бота
+База данных SQLite 
 """
 import asyncio
 import aiosqlite
@@ -221,7 +221,7 @@ class Database:
         return [dict(zip([col[0] for col in cursor.description], row)) for row in rows]
 
     async def get_stats(self) -> Dict[str, Any]:
-        """Получает общую статистику (как в старом боте)"""
+        """Получает общую статистику"""
         try:
             # Получаем количество чатов
             async with self.connection.execute("SELECT COUNT(*) FROM chats") as cursor:

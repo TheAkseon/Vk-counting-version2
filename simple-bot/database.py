@@ -1,5 +1,5 @@
 """
-Простая база данных для VK бота
+База данных для VK бота
 """
 import asyncpg
 import asyncio
@@ -9,7 +9,7 @@ from loguru import logger
 from config import config
 
 class Database:
-    """Простая база данных"""
+    """База данных"""
     
     def __init__(self):
         self.pool: Optional[asyncpg.Pool] = None
