@@ -87,8 +87,8 @@ class ChatAnalyzer:
             # Получаем участников и общее количество параллельно
             members, total_messages = await asyncio.gather(members_task, total_task)
             
-            # Фильтруем только реальных пользователей (исключаем удаленные страницы)
-            real_users = [user_id for user_id in members if user_id > 0]
+            # Участники уже отфильтрованы в VK Client (удалены неактивные пользователи)
+            real_users = members
             members_count = len(real_users)
             
             # Получаем сообщения за последний месяц
@@ -100,11 +100,8 @@ class ChatAnalyzer:
                 msg for msg in messages 
                 if month_ago <= msg.get('date', 0) <= current_time
             ]
-            # Фильтруем сообщения только от реальных пользователей (исключаем удаленные страницы)
-            real_month_messages = [
-                msg for msg in month_messages 
-                if msg.get('from_id', 0) > 0
-            ]
+            # Сообщения уже отфильтрованы в VK Client (удалены от неактивных пользователей)
+            real_month_messages = month_messages
             
             result = {
                 "chat_name": chat_name,
@@ -166,16 +163,16 @@ class ChatAnalyzer:
         filtered_results = []
         
         for result in self.all_results:
-            # Фильтруем участников (исключаем дублированных и удаленные страницы)
+            # Фильтруем участников (исключаем только дублированных, удаленные уже отфильтрованы)
             filtered_members = [
                 user_id for user_id in result['all_members'] 
-                if user_id not in duplicated_users and user_id > 0
+                if user_id not in duplicated_users
             ]
             
-            # Фильтруем сообщения (исключаем от дублированных пользователей и удаленных страниц)
+            # Фильтруем сообщения (исключаем только от дублированных пользователей, удаленные уже отфильтрованы)
             filtered_messages = [
                 msg for msg in result['all_messages']
-                if msg.get('from_id', 0) not in duplicated_users and msg.get('from_id', 0) > 0
+                if msg.get('from_id', 0) not in duplicated_users
             ]
             
             # Создаем отфильтрованный результат

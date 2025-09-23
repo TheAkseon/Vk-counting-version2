@@ -56,18 +56,39 @@ class VKClient:
             return data
     
     async def get_chat_members(self) -> List[Dict[str, Any]]:
-        """Получение участников чата"""
+        """Получение участников чата с проверкой удаленных страниц"""
         try:
             response = await self._make_request("messages.getConversationMembers", {
                 "peer_id": config.PEER_ID
             })
             
             members = response.get("response", {}).get("items", [])
-            # Фильтруем только реальных пользователей (положительные ID) и исключаем удаленные страницы
-            real_users = [member["member_id"] for member in members if member.get("member_id", 0) > 0]
+            # Сначала получаем всех пользователей с положительными ID
+            candidate_users = [member["member_id"] for member in members if member.get("member_id", 0) > 0]
             
-            logger.info(f"Found {len(real_users)} members")
-            return real_users
+            if not candidate_users:
+                logger.info("No candidate users found")
+                return []
+            
+            # Проверяем статус пользователей через официальный API
+            user_statuses = await self.check_users_status(candidate_users)
+            
+            # Фильтруем только активных пользователей
+            active_users = []
+            deleted_count = 0
+            banned_count = 0
+            
+            for user_id in candidate_users:
+                status = user_statuses.get(user_id, "unknown")
+                if status == "active":
+                    active_users.append(user_id)
+                elif status == "deleted":
+                    deleted_count += 1
+                elif status == "banned":
+                    banned_count += 1
+            
+            logger.info(f"Found {len(active_users)} active members, {deleted_count} deleted, {banned_count} banned")
+            return active_users
             
         except Exception as e:
             logger.error(f"Failed to get chat members: {e}")
@@ -103,13 +124,13 @@ class VKClient:
                     if month_ago <= msg.get("date", 0) <= current_time
                 ]
                 
-                # Фильтруем реальные сообщения (исключаем удаленные страницы)
-                real_messages = [
+                # Фильтруем сообщения от пользователей с положительными ID
+                candidate_messages = [
                     msg for msg in month_messages 
                     if msg.get("from_id", 0) > 0
                 ]
                 
-                all_messages.extend(real_messages)
+                all_messages.extend(candidate_messages)
                 
                 if len(messages) < batch_size:
                     break
@@ -118,6 +139,34 @@ class VKClient:
                 
                 # Rate limiting
                 await asyncio.sleep(config.RATE_LIMIT_DELAY)
+            
+            # Фильтруем сообщения от удаленных пользователей
+            if all_messages:
+                # Получаем уникальных авторов сообщений
+                unique_authors = list(set(msg.get("from_id", 0) for msg in all_messages if msg.get("from_id", 0) > 0))
+                
+                if unique_authors:
+                    # Проверяем статус авторов
+                    author_statuses = await self.check_users_status(unique_authors)
+                    
+                    # Фильтруем только сообщения от активных пользователей
+                    filtered_messages = []
+                    deleted_messages = 0
+                    banned_messages = 0
+                    
+                    for msg in all_messages:
+                        from_id = msg.get("from_id", 0)
+                        if from_id > 0:
+                            status = author_statuses.get(from_id, "unknown")
+                            if status == "active":
+                                filtered_messages.append(msg)
+                            elif status == "deleted":
+                                deleted_messages += 1
+                            elif status == "banned":
+                                banned_messages += 1
+                    
+                    logger.info(f"Found {len(filtered_messages)} messages from active users, {deleted_messages} from deleted, {banned_messages} from banned")
+                    return filtered_messages
             
             logger.info(f"Found {len(all_messages)} messages")
             return all_messages
@@ -141,3 +190,40 @@ class VKClient:
         except Exception as e:
             logger.error(f"Failed to get total messages count: {e}")
             return 0
+    
+    async def check_users_status(self, user_ids: List[int]) -> Dict[int, str]:
+        """Проверяет статус пользователей через VK API (официальный способ)"""
+        try:
+            if not user_ids:
+                return {}
+            
+            # VK API позволяет запрашивать до 1000 пользователей за раз
+            batch_size = 1000
+            all_statuses = {}
+            
+            for i in range(0, len(user_ids), batch_size):
+                batch_ids = user_ids[i:i + batch_size]
+                
+                response = await self._make_request("users.get", {
+                    "user_ids": ",".join(map(str, batch_ids)),
+                    "fields": "deactivated"
+                })
+                
+                users = response.get("response", [])
+                
+                for user in users:
+                    user_id = user.get("id")
+                    deactivated = user.get("deactivated")
+                    # "active" если поле deactivated отсутствует, иначе статус из API
+                    status = "active" if not deactivated else deactivated
+                    all_statuses[user_id] = status
+                
+                # Небольшая задержка между запросами
+                await asyncio.sleep(0.1)
+            
+            logger.info(f"Checked status for {len(user_ids)} users, found {len(all_statuses)} responses")
+            return all_statuses
+            
+        except Exception as e:
+            logger.error(f"Failed to check users status: {e}")
+            return {}
