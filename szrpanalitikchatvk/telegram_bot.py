@@ -221,10 +221,11 @@ class TelegramBot:
                     [InlineKeyboardButton(text="📥 Экспорт данных", callback_data="export")]
                 ])
                 
-                await callback.message.edit_text(
-                    report,
-                    reply_markup=keyboard,
-                    parse_mode="Markdown"
+                # Разбиваем длинное сообщение на части
+                await self._send_long_message(
+                    callback.message, 
+                    report, 
+                    keyboard
                 )
                 
         except Exception as e:
@@ -603,6 +604,52 @@ class TelegramBot:
             reply_markup=keyboard,
             parse_mode="Markdown"
         )
+    
+    async def _send_long_message(self, message, text, keyboard=None):
+        """Отправляет длинное сообщение, разбивая его на части"""
+        MAX_LENGTH = 4000  # Оставляем запас для Markdown разметки
+        
+        if len(text) <= MAX_LENGTH:
+            # Если сообщение короткое, отправляем как обычно
+            await message.edit_text(
+                text,
+                reply_markup=keyboard,
+                parse_mode="Markdown"
+            )
+            return
+        
+        # Разбиваем на части
+        parts = []
+        current_part = ""
+        lines = text.split('\n')
+        
+        for line in lines:
+            # Если добавление строки не превысит лимит
+            if len(current_part + line + '\n') <= MAX_LENGTH:
+                current_part += line + '\n'
+            else:
+                # Сохраняем текущую часть и начинаем новую
+                if current_part:
+                    parts.append(current_part.strip())
+                current_part = line + '\n'
+        
+        # Добавляем последнюю часть
+        if current_part:
+            parts.append(current_part.strip())
+        
+        # Отправляем первую часть с клавиатурой
+        await message.edit_text(
+            parts[0],
+            reply_markup=keyboard,
+            parse_mode="Markdown"
+        )
+        
+        # Отправляем остальные части как новые сообщения
+        for i, part in enumerate(parts[1:], 1):
+            await message.reply(
+                f"**Продолжение {i+1}/{len(parts)}:**\n\n{part}",
+                parse_mode="Markdown"
+            )
     
     async def start_polling(self):
         """Запуск бота"""
