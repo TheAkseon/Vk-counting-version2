@@ -3,6 +3,7 @@
 """
 import asyncio
 import aiohttp
+import ssl
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
 from loguru import logger
@@ -18,7 +19,13 @@ class VKClient:
     
     async def initialize(self):
         """Инициализация HTTP сессии"""
-        self.session = aiohttp.ClientSession()
+        # Создаем SSL контекст для обхода проблем с сертификатами
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+        
+        connector = aiohttp.TCPConnector(ssl=ssl_context)
+        self.session = aiohttp.ClientSession(connector=connector)
     
     async def close(self):
         """Закрытие HTTP сессии"""
