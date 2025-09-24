@@ -26,7 +26,7 @@ class Scheduler:
         self.running = True
         logger.info("Scheduler started")
         
-        # Запускаем ежедневный анализ в 02:00
+        # Запускаем ежедневный анализ в 16:15
         asyncio.create_task(self._daily_analysis_task())
         
         # Запускаем мониторинг
@@ -37,7 +37,7 @@ class Scheduler:
         while self.running:
             try:
                 now = datetime.now()
-                target_time = time(00, 18)  
+                target_time = time(16, 15)  
                 
                 # Вычисляем время до следующего запуска
                 next_run = datetime.combine(now.date(), target_time)

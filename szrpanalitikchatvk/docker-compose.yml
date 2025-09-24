@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  vk-bot:
+    build: .
+    container_name: vk-counting-bot
+    restart: unless-stopped
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_ADMIN_CHAT_ID=${TELEGRAM_ADMIN_CHAT_ID}
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./vk_simple_bot.db:/app/vk_simple_bot.db
+    env_file:
+      - .env
