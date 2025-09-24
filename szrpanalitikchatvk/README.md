@@ -102,27 +102,3 @@ sudo systemctl status vk-bot
 ## 📝 Логи
 
 Логи сохраняются в папке `logs/` с ротацией каждый день.
-
-
-
-# Telegram Bot Configuration
-TELEGRAM_BOT_TOKEN=7948828146:AAFJg3tKJidUADzrAwNmhpIHsvqrPtJI0cM
-TELEGRAM_ADMIN_CHAT_ID=1383508355
-
-# VK API Configuration
-VK_ACCESS_TOKEN_GROUP_ID_1=your_vk_token_here
-VK_GROUP_ID_1=your_group_id_here
-
-# Database Configuration
-POSTGRES_HOST=localhost
-POSTGRES_PORT=5432
-POSTGRES_DB=vk_simple_bot
-POSTGRES_USER=vkuser
-POSTGRES_PASSWORD=secure_password_123
-
-# Application Configuration
-VK_API_VERSION=5.131
-PEER_ID=2000000001
-MAX_MESSAGES=10000
-RATE_LIMIT_DELAY=0.34
-
