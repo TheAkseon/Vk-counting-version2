@@ -215,6 +215,10 @@ class ChatAnalyzer:
                 if msg.get('from_id', 0) not in duplicated_users
             ]
             
+            # Дополнительная проверка: если нет участников, очищаем все сообщения
+            if len(filtered_members) == 0:
+                filtered_messages = []
+            
             # Создаем отфильтрованный результат
             filtered_result = {
                 "chat_name": result['chat_name'],
