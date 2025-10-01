@@ -208,6 +208,53 @@ class VKClient:
             logger.error(f"Failed to get chat messages: {e}")
             return []
     
+    async def get_chat_members_from_messages(self) -> List[int]:
+        """Получение участников из авторов сообщений (fallback метод)"""
+        try:
+            messages = await self.get_chat_messages()
+            if not messages:
+                return []
+            
+            # Получаем уникальных авторов сообщений
+            unique_authors = list(set(msg.get("from_id", 0) for msg in messages if msg.get("from_id", 0) > 0))
+            
+            if not unique_authors:
+                return []
+            
+            # Проверяем статус авторов
+            author_statuses = await self.check_users_status(unique_authors)
+            
+            # Возвращаем только активных авторов
+            active_authors = [user_id for user_id in unique_authors if author_statuses.get(user_id) == "active"]
+            
+            logger.info(f"Found {len(active_authors)} active members from message authors")
+            return active_authors
+            
+        except Exception as e:
+            logger.error(f"Failed to get members from messages: {e}")
+            return []
+    
+    async def get_chat_members_with_fallback(self) -> List[int]:
+        """Получение участников с fallback на сообщения"""
+        try:
+            # Основной метод - получение участников чата
+            members = await self.get_chat_members()
+            if members:
+                return members
+        except Exception as e:
+            logger.warning(f"Failed to get chat members: {e}")
+        
+        try:
+            # Fallback: участники из авторов сообщений
+            logger.info("Using fallback: getting members from message authors")
+            members_from_messages = await self.get_chat_members_from_messages()
+            if members_from_messages:
+                return members_from_messages
+        except Exception as e:
+            logger.warning(f"Failed to get members from messages: {e}")
+        
+        return []
+    
     async def get_total_messages_count(self) -> int:
         """Получение общего количества сообщений"""
         try:

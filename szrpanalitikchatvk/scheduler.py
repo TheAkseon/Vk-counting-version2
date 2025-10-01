@@ -37,7 +37,7 @@ class Scheduler:
         while self.running:
             try:
                 now = datetime.now()
-                target_time = time(16, 15)  
+                target_time = time(15, 59)  
                 
                 # Вычисляем время до следующего запуска
                 next_run = datetime.combine(now.date(), target_time)
@@ -144,30 +144,43 @@ class Scheduler:
         writer.writerow(["1. Общая статистика по всем чатам:"])
         writer.writerow(["Дата:", datetime.now().strftime('%d.%m.%Y %H:%M')])
         writer.writerow(["Чатов в CSV:", len(vk_chats)])
-        writer.writerow(["Обработано чатов:", len(results)])
-        writer.writerow([])
         
-        # Считаем статистику из результатов анализа
-        total_members = sum(len(r.get('filtered_members', [])) for r in results)
-        total_messages = sum(len(r.get('filtered_messages', [])) for r in results)
+        # Получаем актуальную статистику только для чатов из CSV
+        csv_group_ids = {chat['group_id'] for chat in vk_chats}
+        total_members = 0
+        total_messages = 0
+        processed_chats = len(vk_chats)  # Всегда равно количеству чатов в CSV
+        
+        # Считаем статистику только для чатов из CSV
+        chats_stats = await db.get_chats_stats()
+        for chat in chats_stats:
+            if chat['group_id'] in csv_group_ids:
+                total_members += chat['unique_members']
+                total_messages += chat['unique_messages']
+        
+        writer.writerow(["Обработано чатов:", processed_chats])
+        writer.writerow([])
         
         writer.writerow(["Общая статистика:"])
         writer.writerow(["Участников:", total_members])
         writer.writerow(["Сообщений (за месяц):", total_messages])
         writer.writerow([])
         
-        # Статистика по чатам из результатов анализа
+        # Статистика по чатам из CSV файла
         writer.writerow(["2. Статистика по каждому чату:"])
         
-        for result in results:
-            group_id = result.get('group_id', 'Unknown')
-            members_count = len(result.get('filtered_members', []))
-            messages_count = len(result.get('filtered_messages', []))
-            writer.writerow([
-                f"id группы чата: {group_id}",
-                f"{members_count} участников,",
-                f"{messages_count} сообщений"
-            ])
+        # Получаем данные по чатам из базы данных только для чатов из CSV
+        chats_stats = await db.get_chats_stats()
+        csv_group_ids = {chat['group_id'] for chat in vk_chats}
+        
+        for chat in chats_stats:
+            # Показываем только чаты, которые есть в CSV файле
+            if chat['group_id'] in csv_group_ids:
+                writer.writerow([
+                    f"id группы чата: {chat['group_id']}",
+                    f"{chat['unique_members']} участников,",
+                    f"{chat['unique_messages']} сообщений"
+                ])
         
         writer.writerow([])
         

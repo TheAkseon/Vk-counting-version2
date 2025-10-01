@@ -87,16 +87,12 @@ class ChatAnalyzer:
             vk_client = VKClient(token)
             await vk_client.initialize()
             
-            # Параллельно получаем участников и общее количество сообщений
-            members_task = asyncio.create_task(vk_client.get_chat_members())
-            total_task = asyncio.create_task(vk_client.get_total_messages_count())
+            # Получаем участников с fallback на сообщения
+            members = await vk_client.get_chat_members_with_fallback()
+            members_count = len(members)
             
-            # Получаем участников и общее количество параллельно
-            members, total_messages = await asyncio.gather(members_task, total_task)
-            
-            # Участники уже отфильтрованы в VK Client (удалены неактивные пользователи)
-            real_users = members
-            members_count = len(real_users)
+            # Получаем общее количество сообщений
+            total_messages = await vk_client.get_total_messages_count()
             
             # Получаем сообщения за последний месяц
             messages = await vk_client.get_chat_messages()
@@ -110,16 +106,32 @@ class ChatAnalyzer:
             # Сообщения уже отфильтрованы в VK Client (удалены от неактивных пользователей)
             real_month_messages = month_messages
             
+            # Валидация данных: проверяем согласованность участников и сообщений
+            validation_warning = None
+            if not members and real_month_messages:
+                # Если участников нет, но есть сообщения - используем авторов сообщений
+                message_authors = list(set(msg.get("from_id", 0) for msg in real_month_messages if msg.get("from_id", 0) > 0))
+                if message_authors:
+                    # Проверяем статус авторов
+                    author_statuses = await vk_client.check_users_status(message_authors)
+                    active_authors = [user_id for user_id in message_authors if author_statuses.get(user_id) == "active"]
+                    if active_authors:
+                        members = active_authors
+                        members_count = len(members)
+                        validation_warning = "Members derived from message authors"
+                        logger.warning(f"Chat {group_id}: {validation_warning}")
+            
             result = {
                 "chat_name": chat_name,
                 "group_id": group_id,
                 "peer_id": 2000000001,
-                "all_members": real_users,
+                "all_members": members,
                 "all_messages": real_month_messages,
                 "members_count": members_count,
                 "messages_last_month": len(real_month_messages),
                 "total_messages": total_messages,
-                "analysis_date": datetime.now().strftime('%d.%m.%Y %H:%M')
+                "analysis_date": datetime.now().strftime('%d.%m.%Y %H:%M'),
+                "validation_warning": validation_warning
             }
             
             logger.info(f"Chat {group_id} analyzed: {members_count} members, {len(real_month_messages)} messages")

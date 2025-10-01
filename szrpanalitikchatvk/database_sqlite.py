@@ -363,6 +363,19 @@ class Database:
             logger.error(f"Failed to get today stats for chat {chat_id}: {e}")
             return {'messages': 0, 'authors': 0}
 
+    async def get_chat_members(self, chat_id: int) -> List[int]:
+        """Получает список участников чата"""
+        try:
+            async with self.connection.execute("""
+                SELECT DISTINCT vk_id FROM chat_members 
+                WHERE chat_id = ? AND is_active = 1
+            """, (chat_id,)) as cursor:
+                rows = await cursor.fetchall()
+                return [row[0] for row in rows if row[0] is not None]
+        except Exception as e:
+            logger.error(f"Failed to get chat members for chat {chat_id}: {e}")
+            return []
+
     async def save_telegram_user(self, user_id: int, username: str = None, first_name: str = None, last_name: str = None):
         """Сохраняет пользователя Telegram"""
         try:
