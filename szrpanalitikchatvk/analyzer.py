@@ -38,8 +38,8 @@ class ChatAnalyzer:
         if len(vk_chats) > batch_size:
             return await self._analyze_chats_in_batches(batch_size)
         
-        # Шаг 1: Анализируем чаты параллельно (по 10 одновременно для стабильности)
-        semaphore = asyncio.Semaphore(10)  # Максимум 10 параллельных чатов для стабильности
+        # Шаг 1: Анализируем чаты параллельно (по 5 одновременно для стабильности)
+        semaphore = asyncio.Semaphore(5)  # Максимум 5 параллельных чатов для стабильности
         
         async def analyze_chat_with_semaphore(chat_config, index):
             async with semaphore:
@@ -138,7 +138,7 @@ class ChatAnalyzer:
                 "all_messages": real_month_messages,
                 "members_count": members_count,
                 "messages_last_month": len(real_month_messages),
-                "total_messages": total_messages,
+                "total_messages": len(real_month_messages),  # Используем отфильтрованные сообщения
                 "analysis_date": datetime.now().strftime('%d.%m.%Y %H:%M'),
                 "validation_warning": validation_warning
             }
@@ -226,7 +226,7 @@ class ChatAnalyzer:
                 "peer_id": result['peer_id'],
                 "members_count": len(filtered_members),
                 "messages_last_month": len(filtered_messages),
-                "total_messages": result['total_messages'],
+                "total_messages": len(filtered_messages),  # Используем отфильтрованные сообщения
                 "analysis_date": result['analysis_date'],
                 "excluded_members": len(result['all_members']) - len(filtered_members),
                 "excluded_messages": len(result['all_messages']) - len(filtered_messages),
@@ -238,12 +238,52 @@ class ChatAnalyzer:
         
         return filtered_results
     
+    async def _cleanup_old_data(self):
+        """Очищает старые данные перед сохранением новых результатов анализа"""
+        try:
+            logger.info("Cleaning up old data before saving new analysis results...")
+            
+            # Удаляем все старые сообщения
+            async with self.db.connection.execute("DELETE FROM messages") as cursor:
+                deleted_messages = cursor.rowcount
+                logger.info(f"Deleted {deleted_messages} old messages")
+            
+            # Удаляем всех старых участников чатов
+            async with self.db.connection.execute("DELETE FROM chat_members") as cursor:
+                deleted_members = cursor.rowcount
+                logger.info(f"Deleted {deleted_members} old chat members")
+            
+            # Удаляем старую статистику (оставляем только исторические данные старше сегодня)
+            today = datetime.now().date()
+            async with self.db.connection.execute("DELETE FROM daily_stats WHERE stat_date = ?", (today,)) as cursor:
+                deleted_stats = cursor.rowcount
+                logger.info(f"Deleted {deleted_stats} old daily stats for today")
+            
+            # Удаляем все старые чаты (они будут пересозданы с актуальными данными)
+            async with self.db.connection.execute("DELETE FROM chats") as cursor:
+                deleted_chats = cursor.rowcount
+                logger.info(f"Deleted {deleted_chats} old chats")
+            
+            # Коммитим изменения
+            await self.db.connection.commit()
+            logger.info("Old data cleanup completed successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to cleanup old data: {e}")
+            # Откатываем транзакцию при ошибке
+            await self.db.connection.rollback()
+            raise
+    
     async def _save_to_database_optimized(self, filtered_results: List[Dict[str, Any]]):
         """Сохранение отфильтрованных данных в базу данных"""
         try:
             # Убеждаемся, что база данных инициализирована
             if not hasattr(self.db, 'connection') or self.db.connection is None:
                 await self.db.initialize()
+            
+            # Очищаем старые данные перед сохранением новых
+            await self._cleanup_old_data()
+            
             # Собираем все данные для batch операций
             all_users = set()
             all_messages = []
@@ -359,8 +399,9 @@ class ChatAnalyzer:
                 batch_results = await self._analyze_single_batch(batch_chats)
                 
                 # Подсчитываем успешные и неудачные чаты
-                batch_successful = len([r for r in batch_results if r.get('members_count', 0) > 0 or r.get('messages_count', 0) > 0])
-                batch_failed = len(batch_chats) - batch_successful
+                # Failed = чаты с критическими ошибками (не по количеству участников/сообщений)
+                batch_successful = len([r for r in batch_results if 'error' not in r])
+                batch_failed = len([r for r in batch_results if 'error' in r])
                 
                 successful_chats += batch_successful
                 failed_chats += batch_failed
@@ -379,7 +420,7 @@ class ChatAnalyzer:
             
             # Увеличенная пауза между пакетами для стабильности
             if batch_num < total_batches - 1:
-                await asyncio.sleep(5)
+                await asyncio.sleep(10)  # Увеличена пауза до 10 секунд
         
         # Финальная статистика
         success_rate = (successful_chats / len(vk_chats)) * 100 if vk_chats else 0
@@ -392,7 +433,7 @@ class ChatAnalyzer:
     
     async def _analyze_single_batch(self, batch_chats: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Анализ одного пакета чатов"""
-        semaphore = asyncio.Semaphore(10)  # Максимум 10 параллельных чатов для стабильности
+        semaphore = asyncio.Semaphore(5)  # Максимум 5 параллельных чатов для стабильности
         
         async def analyze_chat_with_semaphore(chat_config, index):
             async with semaphore:
@@ -405,14 +446,20 @@ class ChatAnalyzer:
                     result = await self._analyze_single_chat(group_id, token, chat_name)
                     
                     # Проверяем успешность обработки
-                    if result and (result.get('members_count', 0) > 0 or result.get('messages_count', 0) > 0):
+                    if result and 'error' not in result:
                         logger.debug(f"Successfully analyzed chat {group_id}: {result.get('members_count', 0)} members, {result.get('messages_count', 0)} messages")
                     else:
-                        logger.warning(f"Chat {group_id} processed but no data found (members: {result.get('members_count', 0)}, messages: {result.get('messages_count', 0)})")
+                        logger.warning(f"Chat {group_id} processed with error: {result.get('error', 'Unknown error') if result else 'No result'}")
                     
                     return result
                 except Exception as e:
-                    logger.error(f"Failed to analyze chat {group_id}: {e}")
+                    error_msg = str(e)
+                    # Проверяем, является ли ошибка VK API error 27
+                    if "VK API error 27" in error_msg:
+                        logger.error(f"VK API error 27 (Invalid access key) for chat {group_id} ({chat_name}): {error_msg}")
+                    else:
+                        logger.error(f"Failed to analyze chat {group_id} ({chat_name}): {e}")
+                    
                     # Возвращаем пустой результат вместо None для сохранения в статистике
                     return {
                         "chat_name": chat_name,

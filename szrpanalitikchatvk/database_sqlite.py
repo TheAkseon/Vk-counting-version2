@@ -311,17 +311,26 @@ class Database:
                 ORDER BY c.id
             """) as cursor:
                 rows = await cursor.fetchall()
-                return [
-                    {
+                results = []
+                for row in rows:
+                    unique_members = row[3] or 0
+                    unique_messages = row[4] or 0
+                    unique_authors = row[5] or 0
+                    
+                    # Если нет участников, то не должно быть сообщений
+                    if unique_members == 0:
+                        unique_messages = 0
+                        unique_authors = 0
+                    
+                    results.append({
                         'group_id': row[0],
                         'title': row[1],
                         'members_count': row[2],
-                        'unique_members': row[3] or 0,
-                        'unique_messages': row[4] or 0,
-                        'unique_authors': row[5] or 0
-                    }
-                    for row in rows
-                ]
+                        'unique_members': unique_members,
+                        'unique_messages': unique_messages,
+                        'unique_authors': unique_authors
+                    })
+                return results
         except Exception as e:
             logger.error(f"Failed to get chats stats: {e}")
             return []

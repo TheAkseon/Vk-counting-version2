@@ -40,7 +40,7 @@ class Config:
     VK_API_VERSION = "5.131"
     PEER_ID = 2000000001
     MAX_MESSAGES = 10000
-    RATE_LIMIT_DELAY = 2.0  # Увеличено для максимальной стабильности работы с VK API
+    RATE_LIMIT_DELAY = 3.0  # Увеличено для максимальной стабильности работы с VK API
     
     # Database
     POSTGRES_HOST = os.getenv('POSTGRES_HOST', 'localhost')

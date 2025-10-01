@@ -57,7 +57,10 @@ class VKClient:
                         elif error_code == 6:  # Too many requests
                             logger.warning(f"Rate limit for {method}: {error_msg} (attempt {attempt + 1}/{max_retries})")
                             if attempt < max_retries - 1:
-                                await asyncio.sleep(2 ** attempt)  # Exponential backoff: 1, 2, 4 seconds
+                                # Увеличиваем задержку для Rate limit: 5, 10, 20, 40 секунд
+                                delay = 5 * (2 ** attempt)
+                                logger.info(f"Waiting {delay} seconds before retry...")
+                                await asyncio.sleep(delay)
                                 continue
                             else:
                                 logger.error(f"Rate limit exceeded after {max_retries} attempts for {method}")
@@ -65,12 +68,17 @@ class VKClient:
                         elif error_code == 9:  # Flood control
                             logger.warning(f"Flood control for {method}: {error_msg} (attempt {attempt + 1}/{max_retries})")
                             if attempt < max_retries - 1:
-                                # Увеличиваем задержку для Flood control: 10, 15, 20, 25 секунд
-                                await asyncio.sleep(10 + (5 * attempt))
+                                # Увеличиваем задержку для Flood control: 30, 60, 120, 240 секунд
+                                delay = 30 * (2 ** attempt)
+                                logger.info(f"Flood control detected, waiting {delay} seconds before retry...")
+                                await asyncio.sleep(delay)
                                 continue
                             else:
                                 logger.error(f"Flood control exceeded after {max_retries} attempts for {method}")
                                 return {"response": {"items": []}}
+                        elif error_code == 27:  # Invalid access key
+                            logger.error(f"VK API error 27 (Invalid access key) for {method}: {error_msg}")
+                            return {"response": {"items": []}}
                         else:
                             logger.error(f"VK API error {error_code}: {error_msg}")
                             return {"response": {"items": []}}
@@ -298,8 +306,8 @@ class VKClient:
                     status = "active" if not deactivated else deactivated
                     all_statuses[user_id] = status
                 
-                # Небольшая задержка между запросами
-                await asyncio.sleep(0.1)
+                # Увеличенная задержка между запросами для стабильности
+                await asyncio.sleep(0.5)
             
             logger.info(f"Checked status for {len(user_ids)} users, found {len(all_statuses)} responses")
             return all_statuses
