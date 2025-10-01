@@ -116,7 +116,8 @@ class TelegramBot:
             if csv_chats_count == 0:
                 report = (
                     f"📊 **Статистика VK чатов**\n\n"
-                    f"📅 Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n"
+                    f"📅 Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n"
+                    f"📊 Чатов в CSV: {len(vk_chats)}\n\n"
                     f"⚠️ **Пока что вы не делали анализ!**\n\n"
                     f"Для получения статистики нажмите кнопку \"🚀 Запустить анализ\""
                 )
@@ -125,17 +126,20 @@ class TelegramBot:
                     [InlineKeyboardButton(text="🚀 Запустить анализ", callback_data="analyze")]
                 ])
             else:
+                success_rate = round((csv_chats_count / len(vk_chats)) * 100, 1) if vk_chats else 0
                 report = (
                     f"📊 **Статистика VK чатов**\n\n"
-                    f"📅 Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n"
+                    f"📅 Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n"
+                    f"📊 Чатов в CSV: {len(vk_chats)}\n"
+                    f"✅ Обработано чатов: {csv_chats_count}\n\n"
                     f"**Общая статистика:**\n"
-                    f"• 💬 Чатов: {csv_chats_count}\n"
                     f"• 👥 Уникальных участников: {csv_total_members}\n"
                     f"• 💬 Уникальных сообщений: {csv_total_messages}\n"
                     f"• 👤 Уникальных авторов: {csv_total_authors}\n\n"
                     f"**Активность за сегодня:**\n"
                     f"• 💬 Новых сообщений: {csv_today_messages}\n"
-                    f"• 👤 Активных авторов: {csv_today_authors}"
+                    f"• 👤 Активных авторов: {csv_today_authors}\n\n"
+                    f"📈 **Успешность обработки:** {success_rate}%"
                 )
                 
                 keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -351,13 +355,13 @@ class TelegramBot:
         # Общая статистика
         writer.writerow(["1. Общая статистика по всем чатам:"])
         writer.writerow(["Дата:", datetime.now().strftime('%d.%m.%Y %H:%M')])
-        writer.writerow(["Обработано чатов:", len(vk_chats)])
-        writer.writerow([])
+        writer.writerow(["Чатов в CSV:", len(vk_chats)])
         
         # Получаем актуальную статистику только для чатов из CSV
         csv_group_ids = {chat['group_id'] for chat in vk_chats}
         total_members = 0
         total_messages = 0
+        processed_chats = 0
         
         # Считаем статистику только для чатов из CSV
         chats_stats = await db.get_chats_stats()
@@ -365,6 +369,10 @@ class TelegramBot:
             if chat['group_id'] in csv_group_ids:
                 total_members += chat['unique_members']
                 total_messages += chat['unique_messages']
+                processed_chats += 1
+        
+        writer.writerow(["Обработано чатов:", processed_chats])
+        writer.writerow([])
         
         writer.writerow(["Общая статистика:"])
         writer.writerow(["Участников:", total_members])

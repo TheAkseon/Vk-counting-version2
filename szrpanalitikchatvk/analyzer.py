@@ -38,8 +38,8 @@ class ChatAnalyzer:
         if len(vk_chats) > batch_size:
             return await self._analyze_chats_in_batches(batch_size)
         
-        # Шаг 1: Анализируем чаты параллельно (по 20 одновременно)
-        semaphore = asyncio.Semaphore(20)  # Максимум 20 параллельных чатов
+        # Шаг 1: Анализируем чаты параллельно (по 10 одновременно для стабильности)
+        semaphore = asyncio.Semaphore(10)  # Максимум 10 параллельных чатов для стабильности
         
         async def analyze_chat_with_semaphore(chat_config, index):
             async with semaphore:
@@ -129,7 +129,19 @@ class ChatAnalyzer:
             
         except Exception as e:
             logger.error(f"Error analyzing chat {group_id}: {e}")
-            return None
+            # Возвращаем пустой результат вместо None для сохранения в статистике
+            return {
+                "chat_name": chat_name,
+                "group_id": group_id,
+                "peer_id": 2000000001,
+                "all_members": [],
+                "all_messages": [],
+                "members_count": 0,
+                "messages_last_month": 0,
+                "total_messages": 0,
+                "analysis_date": datetime.now().strftime('%d.%m.%Y %H:%M'),
+                "error": str(e)
+            }
     
     def _analyze_user_duplication(self) -> Dict[str, Any]:
         """Анализирует дублирование пользователей между чатами"""
@@ -307,6 +319,8 @@ class ChatAnalyzer:
         
         all_results = []
         total_batches = (len(vk_chats) + batch_size - 1) // batch_size
+        successful_chats = 0
+        failed_chats = 0
         
         for batch_num in range(total_batches):
             start_idx = batch_num * batch_size
@@ -318,23 +332,42 @@ class ChatAnalyzer:
             try:
                 # Анализируем текущий пакет
                 batch_results = await self._analyze_single_batch(batch_chats)
+                
+                # Подсчитываем успешные и неудачные чаты
+                batch_successful = len([r for r in batch_results if r.get('members_count', 0) > 0 or r.get('messages_count', 0) > 0])
+                batch_failed = len(batch_chats) - batch_successful
+                
+                successful_chats += batch_successful
+                failed_chats += batch_failed
+                
                 all_results.extend(batch_results)
+                self.all_results.extend(batch_results)  # Накапливаем результаты для фильтрации дубликатов
                 
                 # Сохраняем промежуточные результаты
                 await self._save_batch_results(batch_results, batch_num)
+                
+                logger.info(f"Batch {batch_num + 1} completed: {batch_successful} successful, {batch_failed} failed")
+                
             except Exception as e:
                 logger.error(f"Error processing batch {batch_num + 1}: {e}")
+                failed_chats += len(batch_chats)
             
-            # Небольшая пауза между пакетами
+            # Увеличенная пауза между пакетами для стабильности
             if batch_num < total_batches - 1:
-                await asyncio.sleep(2)
+                await asyncio.sleep(5)
         
-        logger.info(f"Completed processing all {len(vk_chats)} chats")
+        # Финальная статистика
+        success_rate = (successful_chats / len(vk_chats)) * 100 if vk_chats else 0
+        logger.info(f"Completed processing all {len(vk_chats)} chats: {successful_chats} successful, {failed_chats} failed ({success_rate:.1f}% success rate)")
+        
+        if success_rate < 50:
+            logger.warning(f"Low success rate: {success_rate:.1f}%. Consider checking VK API tokens and rate limits.")
+        
         return all_results
     
     async def _analyze_single_batch(self, batch_chats: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Анализ одного пакета чатов"""
-        semaphore = asyncio.Semaphore(20)  # Максимум 20 параллельных чатов
+        semaphore = asyncio.Semaphore(10)  # Максимум 10 параллельных чатов для стабильности
         
         async def analyze_chat_with_semaphore(chat_config, index):
             async with semaphore:
@@ -344,10 +377,30 @@ class ChatAnalyzer:
                 
                 try:
                     logger.info(f"Analyzing chat {index+1}/{len(batch_chats)}: {chat_name} (Group ID: {group_id})")
-                    return await self._analyze_single_chat(group_id, token, chat_name)
+                    result = await self._analyze_single_chat(group_id, token, chat_name)
+                    
+                    # Проверяем успешность обработки
+                    if result and (result.get('members_count', 0) > 0 or result.get('messages_count', 0) > 0):
+                        logger.debug(f"Successfully analyzed chat {group_id}: {result.get('members_count', 0)} members, {result.get('messages_count', 0)} messages")
+                    else:
+                        logger.warning(f"Chat {group_id} processed but no data found (members: {result.get('members_count', 0)}, messages: {result.get('messages_count', 0)})")
+                    
+                    return result
                 except Exception as e:
                     logger.error(f"Failed to analyze chat {group_id}: {e}")
-                    return None
+                    # Возвращаем пустой результат вместо None для сохранения в статистике
+                    return {
+                        "chat_name": chat_name,
+                        "group_id": group_id,
+                        "peer_id": 2000000001,
+                        "all_members": [],
+                        "all_messages": [],
+                        "members_count": 0,
+                        "messages_last_month": 0,
+                        "total_messages": 0,
+                        "analysis_date": datetime.now().strftime('%d.%m.%Y %H:%M'),
+                        "error": str(e)
+                    }
         
         # Создаем задачи для всех чатов в пакете
         tasks = [
@@ -358,7 +411,7 @@ class ChatAnalyzer:
         # Обрабатываем все чаты параллельно
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
-        # Фильтруем успешные результаты
+        # Возвращаем все результаты (включая пустые для статистики)
         return [r for r in results if r is not None and not isinstance(r, Exception)]
     
     async def _save_batch_results(self, batch_results: List[Dict[str, Any]], batch_num: int):

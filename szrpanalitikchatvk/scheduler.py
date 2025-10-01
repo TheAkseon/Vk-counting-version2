@@ -143,6 +143,7 @@ class Scheduler:
         # Общая статистика
         writer.writerow(["1. Общая статистика по всем чатам:"])
         writer.writerow(["Дата:", datetime.now().strftime('%d.%m.%Y %H:%M')])
+        writer.writerow(["Чатов в CSV:", len(vk_chats)])
         writer.writerow(["Обработано чатов:", len(results)])
         writer.writerow([])
         

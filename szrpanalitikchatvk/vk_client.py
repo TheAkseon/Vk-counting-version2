@@ -32,8 +32,8 @@ class VKClient:
         if self.session:
             await self.session.close()
     
-    async def _make_request(self, method: str, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Выполнение запроса к VK API"""
+    async def _make_request(self, method: str, params: Dict[str, Any], max_retries: int = 5) -> Dict[str, Any]:
+        """Выполнение запроса к VK API с retry логикой"""
         url = f"{self.base_url}/{method}"
         request_params = {
             "access_token": self.token,
@@ -41,26 +41,52 @@ class VKClient:
             **params
         }
         
-        async with self.session.get(url, params=request_params) as response:
-            data = await response.json()
-            
-            if "error" in data:
-                error = data["error"]
-                error_code = error.get("error_code", 0)
-                error_msg = error.get("error_msg", "Unknown error")
-                
-                if error_code == 15:  # Access denied
-                    logger.warning(f"Access denied for {method}: {error_msg}")
-                    return {"response": {"items": []}}
-                elif error_code == 6:  # Too many requests
-                    logger.warning(f"Rate limit for {method}: {error_msg}")
-                    await asyncio.sleep(1)
-                    return await self._make_request(method, params)
+        for attempt in range(max_retries):
+            try:
+                async with self.session.get(url, params=request_params) as response:
+                    data = await response.json()
+                    
+                    if "error" in data:
+                        error = data["error"]
+                        error_code = error.get("error_code", 0)
+                        error_msg = error.get("error_msg", "Unknown error")
+                        
+                        if error_code == 15:  # Access denied
+                            logger.warning(f"Access denied for {method}: {error_msg}")
+                            return {"response": {"items": []}}
+                        elif error_code == 6:  # Too many requests
+                            logger.warning(f"Rate limit for {method}: {error_msg} (attempt {attempt + 1}/{max_retries})")
+                            if attempt < max_retries - 1:
+                                await asyncio.sleep(2 ** attempt)  # Exponential backoff: 1, 2, 4 seconds
+                                continue
+                            else:
+                                logger.error(f"Rate limit exceeded after {max_retries} attempts for {method}")
+                                return {"response": {"items": []}}
+                        elif error_code == 9:  # Flood control
+                            logger.warning(f"Flood control for {method}: {error_msg} (attempt {attempt + 1}/{max_retries})")
+                            if attempt < max_retries - 1:
+                                # Увеличиваем задержку для Flood control: 10, 15, 20, 25 секунд
+                                await asyncio.sleep(10 + (5 * attempt))
+                                continue
+                            else:
+                                logger.error(f"Flood control exceeded after {max_retries} attempts for {method}")
+                                return {"response": {"items": []}}
+                        else:
+                            logger.error(f"VK API error {error_code}: {error_msg}")
+                            return {"response": {"items": []}}
+                    
+                    return data
+                    
+            except Exception as e:
+                logger.error(f"Request failed for {method} (attempt {attempt + 1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+                    continue
                 else:
-                    logger.error(f"VK API error {error_code}: {error_msg}")
+                    logger.error(f"Request failed after {max_retries} attempts for {method}")
                     return {"response": {"items": []}}
-            
-            return data
+        
+        return {"response": {"items": []}}
     
     async def get_chat_members(self) -> List[Dict[str, Any]]:
         """Получение участников чата с проверкой удаленных страниц"""
