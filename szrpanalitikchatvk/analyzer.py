@@ -120,6 +120,15 @@ class ChatAnalyzer:
                         members_count = len(members)
                         validation_warning = "Members derived from message authors"
                         logger.warning(f"Chat {group_id}: {validation_warning}")
+                    else:
+                        # Если нет активных авторов сообщений, очищаем сообщения
+                        logger.warning(f"Chat {group_id}: No active message authors found, clearing messages")
+                        real_month_messages = []
+                        validation_warning = "Messages cleared - no active authors"
+                else:
+                    # Если нет авторов сообщений, очищаем сообщения
+                    real_month_messages = []
+                    validation_warning = "Messages cleared - no message authors"
             
             result = {
                 "chat_name": chat_name,
