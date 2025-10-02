@@ -37,7 +37,7 @@ class Scheduler:
         while self.running:
             try:
                 now = datetime.now()
-                target_time = time(15, 59)  
+                target_time = time(6, 27)  
                 
                 # Вычисляем время до следующего запуска
                 next_run = datetime.combine(now.date(), target_time)
@@ -151,12 +151,35 @@ class Scheduler:
         total_messages = 0
         processed_chats = len(vk_chats)  # Всегда равно количеству чатов в CSV
         
-        # Считаем статистику только для чатов из CSV
+        # Инициализируем базу данных если не инициализирована
+        if not db.connection:
+            await db.initialize()
+        
+        # Считаем статистику только для чатов из CSV (по-чатная дедупликация)
         chats_stats = await db.get_chats_stats()
+        all_unique_members = set()
+        
         for chat in chats_stats:
             if chat['group_id'] in csv_group_ids:
-                total_members += chat['unique_members']
-                total_messages += chat['unique_messages']
+                # Получаем участников чата из базы данных (уже отфильтрованных)
+                chat_id = await db.get_chat_id_by_group_id(chat['group_id'])
+                if chat_id:
+                    members = await db.get_chat_members(chat_id)
+                    all_unique_members.update(members)
+                    
+                    # Считаем сообщения только от отфильтрованных участников этого чата
+                    if members:
+                        placeholders = ','.join(['?' for _ in members])
+                        async with db.connection.execute(f"""
+                            SELECT COUNT(DISTINCT m.message_id) 
+                            FROM messages m 
+                            JOIN users u ON m.user_id = u.id 
+                            WHERE m.chat_id = ? AND u.vk_id IN ({placeholders})
+                        """, [chat_id] + [str(member) for member in members]) as cursor:
+                            chat_messages_count = (await cursor.fetchone())[0] or 0
+                            total_messages += chat_messages_count  # Суммируем по чатам
+        
+        total_members = len(all_unique_members)
         
         writer.writerow(["Обработано чатов:", processed_chats])
         writer.writerow([])
@@ -176,11 +199,36 @@ class Scheduler:
         for chat in chats_stats:
             # Показываем только чаты, которые есть в CSV файле
             if chat['group_id'] in csv_group_ids:
-                writer.writerow([
-                    f"id группы чата: {chat['group_id']}",
-                    f"{chat['unique_members']} участников,",
-                    f"{chat['unique_messages']} сообщений"
-                ])
+                # Получаем отфильтрованную статистику для этого чата
+                chat_id = await db.get_chat_id_by_group_id(chat['group_id'])
+                if chat_id:
+                    # Получаем участников чата (уже отфильтрованных от дублированных)
+                    members = await db.get_chat_members(chat_id)
+                    # Получаем сообщения только от этих участников
+                    if members:
+                        placeholders = ','.join(['?' for _ in members])
+                        async with db.connection.execute(f"""
+                            SELECT COUNT(DISTINCT m.message_id) 
+                            FROM messages m 
+                            JOIN users u ON m.user_id = u.id 
+                            WHERE m.chat_id = ? AND u.vk_id IN ({placeholders})
+                        """, [chat_id] + [str(member) for member in members]) as cursor:
+                            messages_count = (await cursor.fetchone())[0] or 0
+                    else:
+                        messages_count = 0
+                    
+                    writer.writerow([
+                        f"id группы чата: {chat['group_id']}",
+                        f"{len(members)} участников,",
+                        f"{messages_count} сообщений"
+                    ])
+                else:
+                    # Если чат не найден в базе, показываем нули
+                    writer.writerow([
+                        f"id группы чата: {chat['group_id']}",
+                        f"0 участников,",
+                        f"0 сообщений"
+                    ])
         
         writer.writerow([])
         

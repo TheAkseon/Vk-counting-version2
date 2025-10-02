@@ -36,35 +36,38 @@ class ChatAnalyzer:
         
         # Если чатов много, обрабатываем пакетами
         if len(vk_chats) > batch_size:
-            return await self._analyze_chats_in_batches(batch_size)
-        
-        # Шаг 1: Анализируем чаты параллельно (по 5 одновременно для стабильности)
-        semaphore = asyncio.Semaphore(5)  # Максимум 5 параллельных чатов для стабильности
-        
-        async def analyze_chat_with_semaphore(chat_config, index):
-            async with semaphore:
-                group_id = chat_config["group_id"]
-                token = chat_config["token"]
-                chat_name = f"Chat {index+1}"
-                
-                try:
-                    logger.info(f"Analyzing chat {index+1}/{len(config.VK_CHATS)}: {chat_name} (Group ID: {group_id})")
-                    return await self._analyze_single_chat(group_id, token, chat_name)
-                except Exception as e:
-                    logger.error(f"Failed to analyze chat {group_id}: {e}")
-                    return None
-        
-        # Создаем задачи для всех чатов
-        tasks = [
-            analyze_chat_with_semaphore(chat_config, i) 
-            for i, chat_config in enumerate(vk_chats)
-        ]
-        
-        # Обрабатываем все чаты параллельно
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        # Фильтруем успешные результаты
-        self.all_results = [r for r in results if r is not None and not isinstance(r, Exception)]
+            # Обрабатываем пакетами, но НЕ возвращаем результат сразу
+            await self._analyze_chats_in_batches(batch_size)
+            # self.all_results уже заполнен в _analyze_chats_in_batches
+        else:
+            # Обычная обработка для небольшого количества чатов
+            # Шаг 1: Анализируем чаты параллельно (по 5 одновременно для стабильности)
+            semaphore = asyncio.Semaphore(5)  # Максимум 5 параллельных чатов для стабильности
+            
+            async def analyze_chat_with_semaphore(chat_config, index):
+                async with semaphore:
+                    group_id = chat_config["group_id"]
+                    token = chat_config["token"]
+                    chat_name = f"Chat {index+1}"
+                    
+                    try:
+                        logger.info(f"Analyzing chat {index+1}/{len(config.VK_CHATS)}: {chat_name} (Group ID: {group_id})")
+                        return await self._analyze_single_chat(group_id, token, chat_name)
+                    except Exception as e:
+                        logger.error(f"Failed to analyze chat {group_id}: {e}")
+                        return None
+            
+            # Создаем задачи для всех чатов
+            tasks = [
+                analyze_chat_with_semaphore(chat_config, i) 
+                for i, chat_config in enumerate(vk_chats)
+            ]
+            
+            # Обрабатываем все чаты параллельно
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Фильтруем успешные результаты
+            self.all_results = [r for r in results if r is not None and not isinstance(r, Exception)]
         
         logger.info(f"Successfully analyzed {len(self.all_results)} out of {len(vk_chats)} chats")
         
@@ -387,6 +390,7 @@ class ChatAnalyzer:
         successful_chats = 0
         failed_chats = 0
         
+        # Обрабатываем все батчи и накапливаем результаты
         for batch_num in range(total_batches):
             start_idx = batch_num * batch_size
             end_idx = min(start_idx + batch_size, len(vk_chats))
@@ -399,18 +403,14 @@ class ChatAnalyzer:
                 batch_results = await self._analyze_single_batch(batch_chats)
                 
                 # Подсчитываем успешные и неудачные чаты
-                # Failed = чаты с критическими ошибками (не по количеству участников/сообщений)
                 batch_successful = len([r for r in batch_results if 'error' not in r])
                 batch_failed = len([r for r in batch_results if 'error' in r])
                 
                 successful_chats += batch_successful
                 failed_chats += batch_failed
                 
+                # Накапливаем результаты (НЕ сохраняем в БД пока)
                 all_results.extend(batch_results)
-                self.all_results.extend(batch_results)  # Накапливаем результаты для фильтрации дубликатов
-                
-                # Сохраняем промежуточные результаты
-                await self._save_batch_results(batch_results, batch_num)
                 
                 logger.info(f"Batch {batch_num + 1} completed: {batch_successful} successful, {batch_failed} failed")
                 
@@ -429,6 +429,11 @@ class ChatAnalyzer:
         if success_rate < 50:
             logger.warning(f"Low success rate: {success_rate:.1f}%. Consider checking VK API tokens and rate limits.")
         
+        # Сохраняем накопленные результаты в self.all_results для финального анализа
+        self.all_results = all_results
+        
+        # ВАЖНО: Анализ дублирования и сохранение происходят в основном методе analyze_all_chats
+        # после возврата из этого метода
         return all_results
     
     async def _analyze_single_batch(self, batch_chats: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -486,52 +491,3 @@ class ChatAnalyzer:
         # Возвращаем все результаты (включая пустые для статистики)
         return [r for r in results if r is not None and not isinstance(r, Exception)]
     
-    async def _save_batch_results(self, batch_results: List[Dict[str, Any]], batch_num: int):
-        """Сохранение результатов пакета"""
-        try:
-            logger.info(f"Saving batch {batch_num + 1} results ({len(batch_results)} chats)")
-            
-            # Анализируем дублирование для текущего пакета
-            duplication_info = self._analyze_user_duplication_for_batch(batch_results)
-            
-            # Фильтруем данные
-            filtered_results = self._filter_duplicated_data(duplication_info['duplicated_users'])
-            
-            # Сохраняем в базу данных
-            await self._save_to_database_optimized(filtered_results)
-            
-            logger.info(f"Batch {batch_num + 1} saved successfully")
-            
-        except Exception as e:
-            logger.error(f"Failed to save batch {batch_num + 1}: {e}")
-    
-    def _analyze_user_duplication_for_batch(self, batch_results: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Анализирует дублирование пользователей для пакета"""
-        user_chats = {}
-        
-        for result in batch_results:
-            chat_name = result['chat_name']
-            for user_id in result['all_members']:
-                if user_id not in user_chats:
-                    user_chats[user_id] = []
-                user_chats[user_id].append(chat_name)
-        
-        duplicated_users = []
-        unique_users = []
-        
-        for user_id, chats in user_chats.items():
-            if len(chats) > 1:  # Дублированный если в более чем 1 чате
-                duplicated_users.append(user_id)
-            else:
-                unique_users.append(user_id)
-        
-        return {
-            'user_chats': user_chats,
-            'duplicated_users': duplicated_users,
-            'unique_users': unique_users,
-            'duplication_stats': {
-                'total_users': len(user_chats),
-                'duplicated_count': len(duplicated_users),
-                'unique_count': len(unique_users)
-            }
-        }

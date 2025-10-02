@@ -81,41 +81,73 @@ class TelegramBot:
             
             # Получаем актуальную статистику из базы данных
             csv_group_ids = {chat['group_id'] for chat in vk_chats}
-            csv_total_members = 0
-            csv_total_messages = 0
             csv_chats_count = len(vk_chats)  # Всегда равно количеству чатов в CSV
             
-            # Считаем статистику только для чатов из CSV
-            chats_stats = await db.get_chats_stats()
-            for chat in chats_stats:
-                if chat['group_id'] in csv_group_ids:
-                    csv_total_members += chat['unique_members']
-                    csv_total_messages += chat['unique_messages']
-            
-            # Считаем уникальных авторов (без дублирования между чатами)
+            # Считаем уникальных участников и сообщения (по-чатная дедупликация)
             all_unique_members = set()
+            csv_total_messages = 0  # Суммируем по чатам, а не через set()
+            chats_stats = await db.get_chats_stats()
+            
             for chat in chats_stats:
                 if chat['group_id'] in csv_group_ids:
-                    # Получаем участников чата из базы данных
+                    # Получаем участников чата из базы данных (уже отфильтрованных)
                     chat_id = await db.get_chat_id_by_group_id(chat['group_id'])
                     if chat_id:
                         members = await db.get_chat_members(chat_id)
                         all_unique_members.update(members)
+                        
+                        # Считаем сообщения только от отфильтрованных участников этого чата
+                        if members:
+                            placeholders = ','.join(['?' for _ in members])
+                            async with db.connection.execute(f"""
+                                SELECT COUNT(DISTINCT m.message_id) 
+                                FROM messages m 
+                                JOIN users u ON m.user_id = u.id 
+                                WHERE m.chat_id = ? AND u.vk_id IN ({placeholders})
+                            """, [chat_id] + [str(member) for member in members]) as cursor:
+                                chat_messages_count = (await cursor.fetchone())[0] or 0
+                                csv_total_messages += chat_messages_count  # Суммируем по чатам
             
-            csv_total_authors = len(all_unique_members)
+            csv_total_members = len(all_unique_members)
+            csv_total_authors = len(all_unique_members)  # Авторы = участники
             
-            # Получаем активность за сегодня из базы данных
-            csv_today_messages = 0
-            csv_today_authors = 0
+            # Получаем активность за сегодня из базы данных (по-чатная дедупликация)
+            all_today_authors = set()
+            csv_today_messages = 0  # Суммируем по чатам, а не через set()
             
             for chat in chats_stats:
                 if chat['group_id'] in csv_group_ids:
                     # Получаем активность за сегодня для этого чата
                     chat_id = await db.get_chat_id_by_group_id(chat['group_id'])
                     if chat_id:
-                        today_stats = await db.get_today_stats_for_chat(chat_id)
-                        csv_today_messages += today_stats['messages']
-                        csv_today_authors += today_stats['authors']
+                        # Получаем отфильтрованных участников чата
+                        members = await db.get_chat_members(chat_id)
+                        if members:
+                            from datetime import date
+                            today = date.today()
+                            placeholders = ','.join(['?' for _ in members])
+                            
+                            # Считаем сообщения за сегодня только от отфильтрованных участников этого чата
+                            async with db.connection.execute(f"""
+                                SELECT COUNT(DISTINCT m.message_id) 
+                                FROM messages m 
+                                JOIN users u ON m.user_id = u.id 
+                                WHERE m.chat_id = ? AND DATE(m.date) = ? AND u.vk_id IN ({placeholders})
+                            """, [chat_id, today] + [str(member) for member in members]) as cursor:
+                                chat_today_messages = (await cursor.fetchone())[0] or 0
+                                csv_today_messages += chat_today_messages  # Суммируем по чатам
+                            
+                            # Авторы за сегодня только отфильтрованные участники
+                            async with db.connection.execute(f"""
+                                SELECT DISTINCT u.vk_id 
+                                FROM messages m 
+                                JOIN users u ON m.user_id = u.id 
+                                WHERE m.chat_id = ? AND DATE(m.date) = ? AND u.vk_id IN ({placeholders})
+                            """, [chat_id, today] + [str(member) for member in members]) as cursor:
+                                authors = await cursor.fetchall()
+                                all_today_authors.update(author[0] for author in authors)
+            
+            csv_today_authors = len(all_today_authors)
             
             # Проверяем, есть ли данные (проверяем наличие чатов в CSV)
             if len(vk_chats) == 0:
@@ -365,11 +397,36 @@ class TelegramBot:
         # Получаем данные по чатам из базы данных
         chats_stats = await db.get_chats_stats()
         for chat in chats_stats:
-            writer.writerow([
-                f"id группы чата: {chat['group_id']}",
-                f"{chat['unique_members']} участников,",
-                f"{chat['unique_messages']} сообщений"
-            ])
+            # Получаем отфильтрованную статистику для этого чата
+            chat_id = await db.get_chat_id_by_group_id(chat['group_id'])
+            if chat_id:
+                # Получаем участников чата (уже отфильтрованных от дублированных)
+                members = await db.get_chat_members(chat_id)
+                # Получаем сообщения только от этих участников
+                if members:
+                    placeholders = ','.join(['?' for _ in members])
+                    async with db.connection.execute(f"""
+                        SELECT COUNT(DISTINCT m.message_id) 
+                        FROM messages m 
+                        JOIN users u ON m.user_id = u.id 
+                        WHERE m.chat_id = ? AND u.vk_id IN ({placeholders})
+                    """, [chat_id] + [str(member) for member in members]) as cursor:
+                        messages_count = (await cursor.fetchone())[0] or 0
+                else:
+                    messages_count = 0
+                
+                writer.writerow([
+                    f"id группы чата: {chat['group_id']}",
+                    f"{len(members)} участников,",
+                    f"{messages_count} сообщений"
+                ])
+            else:
+                # Если чат не найден в базе, показываем нули
+                writer.writerow([
+                    f"id группы чата: {chat['group_id']}",
+                    f"0 участников,",
+                    f"0 сообщений"
+                ])
         
         # Добавляем BOM для правильного отображения в Windows Excel
         csv_content = output.getvalue()
@@ -398,16 +455,38 @@ class TelegramBot:
         
         # Получаем актуальную статистику только для чатов из CSV
         csv_group_ids = {chat['group_id'] for chat in vk_chats}
-        total_members = 0
-        total_messages = 0
         processed_chats = len(vk_chats)  # Всегда равно количеству чатов в CSV
         
-        # Считаем статистику только для чатов из CSV
+        # Инициализируем базу данных если не инициализирована
+        if not db.connection:
+            await db.initialize()
+        
+        # Считаем уникальных участников и сообщения (по-чатная дедупликация)
+        all_unique_members = set()
+        total_messages = 0  # Суммируем по чатам, а не через set()
         chats_stats = await db.get_chats_stats()
+        
         for chat in chats_stats:
             if chat['group_id'] in csv_group_ids:
-                total_members += chat['unique_members']
-                total_messages += chat['unique_messages']
+                # Получаем участников чата из базы данных (уже отфильтрованных)
+                chat_id = await db.get_chat_id_by_group_id(chat['group_id'])
+                if chat_id:
+                    members = await db.get_chat_members(chat_id)
+                    all_unique_members.update(members)
+                    
+                    # Считаем сообщения только от отфильтрованных участников этого чата
+                    if members:
+                        placeholders = ','.join(['?' for _ in members])
+                        async with db.connection.execute(f"""
+                            SELECT COUNT(DISTINCT m.message_id) 
+                            FROM messages m 
+                            JOIN users u ON m.user_id = u.id 
+                            WHERE m.chat_id = ? AND u.vk_id IN ({placeholders})
+                        """, [chat_id] + [str(member) for member in members]) as cursor:
+                            chat_messages_count = (await cursor.fetchone())[0] or 0
+                            total_messages += chat_messages_count  # Суммируем по чатам
+        
+        total_members = len(all_unique_members)
         
         writer.writerow(["Обработано чатов:", processed_chats])
         writer.writerow([])
@@ -427,11 +506,36 @@ class TelegramBot:
         for chat in chats_stats:
             # Показываем только чаты, которые есть в CSV файле
             if chat['group_id'] in csv_group_ids:
-                writer.writerow([
-                    f"id группы чата: {chat['group_id']}",
-                    f"{chat['unique_members']} участников,",
-                    f"{chat['unique_messages']} сообщений"
-                ])
+                # Получаем отфильтрованную статистику для этого чата
+                chat_id = await db.get_chat_id_by_group_id(chat['group_id'])
+                if chat_id:
+                    # Получаем участников чата (уже отфильтрованных от дублированных)
+                    members = await db.get_chat_members(chat_id)
+                    # Получаем сообщения только от этих участников
+                    if members:
+                        placeholders = ','.join(['?' for _ in members])
+                        async with db.connection.execute(f"""
+                            SELECT COUNT(DISTINCT m.message_id) 
+                            FROM messages m 
+                            JOIN users u ON m.user_id = u.id 
+                            WHERE m.chat_id = ? AND u.vk_id IN ({placeholders})
+                        """, [chat_id] + [str(member) for member in members]) as cursor:
+                            messages_count = (await cursor.fetchone())[0] or 0
+                    else:
+                        messages_count = 0
+                    
+                    writer.writerow([
+                        f"id группы чата: {chat['group_id']}",
+                        f"{len(members)} участников,",
+                        f"{messages_count} сообщений"
+                    ])
+                else:
+                    # Если чат не найден в базе, показываем нули
+                    writer.writerow([
+                        f"id группы чата: {chat['group_id']}",
+                        f"0 участников,",
+                        f"0 сообщений"
+                    ])
         
         writer.writerow([])
         
